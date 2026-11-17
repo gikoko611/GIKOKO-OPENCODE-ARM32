@@ -21,6 +21,10 @@ These existing Node branches mean a Node port should be based on upstream's Node
 
 The v2.3.0 Node build has a second hard target gate in `packages/cli/src/node/target.ts`: it accepts only `darwin`, `linux`, or `win32`, and only `arm64` or `x64`. It constructs platform-specific package names for node-pty, Parcel Watcher, FFF, and FFF FFI. The Node bundle asset collector then resolves those native packages and OpenTUI's Node assets before Vite builds. Therefore adding `arm` to the SEA matrix alone is not sufficient; an Android/Termux target requires a new target descriptor, compatible native packages or explicit tested fallbacks, and an OpenTUI native asset strategy.
 
+## OpenTUI Android ARMv7 cross-build experiment
+
+OpenTUI v0.8.3's `packages/native/build.zig` has a `buildSingleTarget()` fallback that accepts a custom Zig target string even when it is not in the official `SUPPORTED_TARGETS` list. This creates a concrete experiment path without modifying upstream source: run `zig build -Dlibrary-target=arm-linux-android.29` after preparing its vendored Zig dependencies. The experiment is automated in [armv7-opentui-cross-build.yml](../.github/workflows/armv7-opentui-cross-build.yml). It checks for a shared library, verifies ELF32/ARM, and rejects glibc dynamic dependencies. A successful CI build would still require Android/Termux Node FFI and terminal rendering tests on the Redmi 9A before it can be considered usable.
+
 ## Confirmed OpenTUI v0.8.3 target gap (checked 2026-11-17)
 
 The pinned OpenTUI version used by this project is 0.8.3. Its upstream `packages/native/build.zig` defines exactly eight `SUPPORTED_TARGETS`: Linux x86_64/aarch64 (glibc and musl), macOS x86_64/aarch64, and Windows x86_64/aarch64. It does **not** define Android, Linux ARMv7, or a 32-bit ARM target. The v0.8.3 native README documents the Zig build flow and `-Dlibrary-target`, but that option only selects a target from the explicit supported-target list. Therefore an ARMv7 Android renderer requires a maintained source patch/port and a verified Bionic toolchain; changing the package name or target metadata is insufficient.
