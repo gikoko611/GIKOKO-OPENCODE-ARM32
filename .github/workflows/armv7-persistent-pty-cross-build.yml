@@ -82,13 +82,19 @@ jobs:
           grep -F '"armv7-linux-androideabi" => "arm-linux-androideabi",' packages/process-daemon/build.rs
           cargo build --locked --release --target armv7-linux-androideabi \
             --manifest-path packages/process-daemon/Cargo.toml
-          BIN="target/armv7-linux-androideabi/release/opencode-pty"
+          # Cargo may place target artifacts under the package workspace rather
+          # than the repository-level target directory. Discover the actual
+          # ARMv7 daemon, then stage it at a stable artifact path.
+          BIN="$(find . -type f -path '*/armv7-linux-androideabi/release/opencode-pty' -print -quit)"
+          test -n "$BIN"
           test -s "$BIN"
-          readelf -h "$BIN" | grep -E 'Class:.*ELF32'
-          readelf -h "$BIN" | grep -E 'Machine:.*ARM'
-          readelf -l "$BIN" | grep -E 'interpreter.*linker' || true
-          file "$BIN"
-          sha256sum "$BIN" | tee persistent-pty-armv7.sha256
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          install -m 0755 "$BIN" "$GITHUB_WORKSPACE/dist/opencode-pty"
+          readelf -h "$GITHUB_WORKSPACE/dist/opencode-pty" | grep -E 'Class:.*ELF32'
+          readelf -h "$GITHUB_WORKSPACE/dist/opencode-pty" | grep -E 'Machine:.*ARM'
+          readelf -l "$GITHUB_WORKSPACE/dist/opencode-pty" | grep -E 'interpreter.*linker' || true
+          file "$GITHUB_WORKSPACE/dist/opencode-pty"
+          sha256sum "$GITHUB_WORKSPACE/dist/opencode-pty" | tee "$GITHUB_WORKSPACE/dist/persistent-pty-armv7.sha256"
           {
             echo "## Protocol-8 persistent PTY ARMv7 cross-build"
             echo "- OpenCode: v2.3.0"
@@ -105,6 +111,6 @@ jobs:
         with:
           name: opencode-pty-protocol8-android-armv7-candidate
           path: |
-            upstream-opencode/target/armv7-linux-androideabi/release/opencode-pty
-            upstream-opencode/persistent-pty-armv7.sha256
+            dist/opencode-pty
+            dist/persistent-pty-armv7.sha256
           retention-days: 14
