@@ -4,6 +4,10 @@ on:
   # Manual only: OpenTUI v0.8.3 currently has a 64-bit-only native ABI.
   # Do not spend hosted runner time until the ARM32 ABI port is implemented.
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/armv7-opentui-cross-build.yml"
 
 permissions:
   contents: read
@@ -37,10 +41,19 @@ jobs:
           SYSROOT="$NDK/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
           test -d "$SYSROOT/usr/include/arm-linux-androideabi"
           test -d "$SYSROOT/usr/lib/arm-linux-androideabi/29"
+          CXX_SHARED="$(find "$SYSROOT/usr/lib/arm-linux-androideabi" -name libc++_shared.so -type f -print -quit)"
+          if [ -z "$CXX_SHARED" ]; then
+            echo "NDK libc++_shared.so for armeabi-v7a was not found" >&2
+            find "$SYSROOT/usr/lib" -maxdepth 3 -name 'libc++*' -print >&2
+            exit 1
+          fi
+          cp "$CXX_SHARED" "$GITHUB_WORKSPACE/libc++_shared-android-armv7.so"
           {
             echo "ANDROID_NDK_HOME=$NDK"
             echo "ANDROID_SYSROOT=$SYSROOT"
+            echo "ANDROID_CXX_LIB_DIR=$(dirname "$CXX_SHARED")"
           } >> "$GITHUB_ENV"
+          file "$GITHUB_WORKSPACE/libc++_shared-android-armv7.so"
           cat > "$GITHUB_WORKSPACE/android-libc.txt" <<EOF
           include_dir=$SYSROOT/usr/include
           sys_include_dir=$SYSROOT/usr/include/arm-linux-androideabi
@@ -340,5 +353,6 @@ int ot_atomic_u64_compare_exchange(uint64_t *value, uint64_t *expected, uint64_t
             opentui-dynamic-section.txt
             opentui-vendor-sha256.txt
             android-libc.txt
+            libc++_shared-android-armv7.so
           if-no-files-found: ignore
           retention-days: 14
