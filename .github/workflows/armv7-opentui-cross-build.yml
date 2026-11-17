@@ -568,36 +568,24 @@ jobs:
             echo "- Cross-compilation is not a substitute for executing this probe on the Redmi 9A."
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Assemble one-download ARMv7 native test bundle
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash "$GITHUB_WORKSPACE/termux/package-armv7-native-test-bundle.sh" "$GITHUB_WORKSPACE/dist/armv7-native-test-bundle"
+          test -s "$GITHUB_WORKSPACE/dist/armv7-native-test-bundle/GIKOKO-OPENCODE-ARM32-NATIVE-TEST-BUNDLE.zip"
+          sha256sum "$GITHUB_WORKSPACE/dist/armv7-native-test-bundle/GIKOKO-OPENCODE-ARM32-NATIVE-TEST-BUNDLE.zip" | tee "$GITHUB_WORKSPACE/dist/armv7-native-test-bundle/SHA256SUMS.txt"
+          echo "- A single ZIP now contains the native experiments, device test scripts, and ELF evidence." >> "$GITHUB_STEP_SUMMARY"
+          echo "- This is a native test bundle, not the final OpenCode CLI installer." >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload native build evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: opentui-android-armv7-experiment
+          name: GIKOKO-OPENCODE-ARM32-NATIVE-TEST-BUNDLE
           path: |
-            libopentui-android-armv7.so
-            opentui-elf-header.txt
-            opentui-dynamic-section.txt
-            opentui-dynamic-symbols.txt
-            opentui-exported-ot-symbols.txt
-            libnode-ffi-smoke.so
-            node-ffi-smoke.mjs
-            test-node-ffi-armv7.sh
-            node-runtime-smoke.mjs
-            node-opentui-load-smoke.mjs
-            test-node-runtime-armv7.sh
-            test-opentui-armv7.sh
-            node-ffi-smoke-elf.txt
-            node-ffi-smoke-dynamic.txt
-            opentui-vendor-sha256.txt
-            android-libc.txt
-            libc++_shared-android-armv7.so
-            libpty-api-smoke-android-armv7.so
-            pty-api-elf-header.txt
-            pty-api-dynamic-section.txt
-            node-pty-api-smoke.mjs
-            test-pty-api-armv7.sh
-            pty-forkexec-smoke-android-armv7
-            pty-forkexec-elf-header.txt
-            pty-forkexec-dynamic-section.txt
+            dist/armv7-native-test-bundle/GIKOKO-OPENCODE-ARM32-NATIVE-TEST-BUNDLE.zip
+            dist/armv7-native-test-bundle/SHA256SUMS.txt
           if-no-files-found: ignore
           retention-days: 14
