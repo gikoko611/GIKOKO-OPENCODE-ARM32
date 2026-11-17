@@ -83,3 +83,18 @@ Artifact ID: `14304174110`; size: 7,945,611 bytes; expiry: 2026-12-01. Direct ZI
 Both `.so` files are ELF32 ARM EABI5 soft-float Android API 29 libraries. The OpenTUI library depends on Bionic `libc.so`, `libm.so`, and `libdl.so`; the smaller smoke library depends on `libc.so` and `libdl.so`. This is build and binary-inspection evidence only, not a successful FFI runtime test.
 
 Run `bash test-node-ffi-armv7.sh` inside the Redmi 9A's 32-bit Termux environment after extracting the artifact. The script requires Node >=26.4.0, `process.arch === "arm"`, and the `--experimental-ffi` feature. Keep the exact terminal output for the next compatibility decision.
+
+
+## Confirmed on Redmi 9A / Termux (2026-11-17)
+
+The user ran `bash test-node-ffi-armv7.sh` from the extracted Actions artifact. Exact reported result:
+
+```text
+Node: v26.4.0
+Arch: arm
+PASS: Node node:ffi loaded Android ARMv7 .so
+PASS: i32, u64, f64 and pointer argument/return calls
+Node: 26.4.0; arch: arm; platform: android
+```
+
+Therefore Node v26.4.0 on this 32-bit Android/Termux device successfully imports `node:ffi`, loads the Android ARMv7 smoke library, and passes the i32/u64/f64/pointer call tests. The FFI API is still experimental. The next gate is to load and call the actual OpenTUI ARMv7 library through OpenTUI's generated bindings; basic FFI smoke success alone does not prove full TUI rendering.
