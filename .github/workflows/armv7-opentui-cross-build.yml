@@ -77,6 +77,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Zig translate-c otherwise discovers the Ubuntu runner's glibc headers
+          # before the Android Bionic headers for this custom Android target.
+          export CPATH="$ANDROID_SYSROOT/usr/include/arm-linux-androideabi:$ANDROID_SYSROOT/usr/include"
+          export C_INCLUDE_PATH="$CPATH"
+          export CPLUS_INCLUDE_PATH="$CPATH"
           zig build --libc "$GITHUB_WORKSPACE/android-libc.txt" \
             -Dlibrary-target=arm-linux-android.29 \
             -Doptimize=ReleaseFast --summary all
