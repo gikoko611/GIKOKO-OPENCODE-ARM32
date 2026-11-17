@@ -185,6 +185,32 @@ jobs:
           EOF
           (cd "$ROOT" && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
           du -ah "$ROOT" | sort -h | tail -20
+      - name: Audit final package contents and launch scripts
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE/upstream/dist/armv7-node-cli"
+          test -s "$ROOT/opencode.mjs"
+          test -s "$ROOT/assets/app-archive.bin"
+          test -s "$ROOT/assets/@silvia-odwyer/photon-node/photon_rs_bg.wasm"
+          test -x "$ROOT/opencode"
+          test -x "$ROOT/install.sh"
+          bash -n "$ROOT/opencode" "$ROOT/install.sh"
+          (cd "$ROOT" && sha256sum -c SHA256SUMS)
+          for file in native/libopentui-android-armv7.so native/termux-pty-android-armv7.node native/watcher.node native/opencode-pty native/libc++_shared-android-armv7.so; do
+            readelf -h "$ROOT/$file" | grep -q 'Class:.*ELF32'
+            readelf -h "$ROOT/$file" | grep -q 'Machine:.*ARM'
+          done
+          llvm-ar t "$ROOT/native/libghostty-vt.a" > "$RUNNER_TEMP/ghostty-members.txt"
+          test -s "$RUNNER_TEMP/ghostty-members.txt"
+          mkdir -p "$RUNNER_TEMP/ghostty-objects"
+          (cd "$RUNNER_TEMP/ghostty-objects" && llvm-ar x "$ROOT/native/libghostty-vt.a")
+          find "$RUNNER_TEMP/ghostty-objects" -type f -print0 | while IFS= read -r -d '' object; do
+            if readelf -h "$object" 2>/dev/null | grep -q 'Machine:.*ARM'; then
+              echo "Verified ARM object: $object"
+              exit 0
+            fi
+          done
+          ! find "$ROOT" -iname '*ffmpeg*' -print -quit | grep -q .
       - name: Upload Android ARMv7 full CLI package candidate
         uses: actions/upload-artifact@v4
         with:
