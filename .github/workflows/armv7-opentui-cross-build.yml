@@ -1,8 +1,8 @@
 name: ARMv7 OpenTUI native cross-build experiment
 
 on:
-  # Manual only: OpenTUI v0.8.3 currently has a 64-bit-only native ABI.
-  # Do not spend hosted runner time until the ARM32 ABI port is implemented.
+  # The ARMv7 native experiment runs manually, on matching main pushes,
+  # and on pull requests that modify the ARMv7 PTY probe.
   workflow_dispatch:
   push:
     branches: [main]
