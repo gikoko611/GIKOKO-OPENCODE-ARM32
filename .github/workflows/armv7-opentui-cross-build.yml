@@ -24,6 +24,9 @@ on:
       - ".github/workflows/armv7-opentui-cross-build.yml"
       - "termux/armv7/pty-api-smoke.c"
       - "termux/armv7/pty-forkexec-smoke.c"
+      - "termux/armv7/termux-pty-android.c"
+      - "termux/armv7/node-pty-napi-smoke-armv7.mjs"
+      - "termux/test-pty-napi-armv7.sh"
       - "termux/armv7/node-pty-api-smoke.mjs"
       - "termux/test-pty-api-armv7.sh"
       - "termux/test-pty-forkexec-armv7.sh"
@@ -581,7 +584,12 @@ jobs:
           NODE_VERSION=26.4.0
           HEADERS="$RUNNER_TEMP/node-v${NODE_VERSION}-headers"
           mkdir -p "$HEADERS"
-          curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-headers.tar.gz" | tar -xz -C "$HEADERS"
+          curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-headers.tar.gz" | tar -xz --strip-components=1 -C "$HEADERS"
+          test -s "$HEADERS/include/node/node_api.h" || {
+            echo "Node headers archive did not extract the expected include/node layout" >&2
+            find "$HEADERS" -maxdepth 4 -name node_api.h -print >&2
+            exit 1
+          }
           test -s "$HEADERS/include/node/node_api.h"
           CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi29-clang"
           test -x "$CC"
