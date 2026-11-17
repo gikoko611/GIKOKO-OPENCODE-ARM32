@@ -46,6 +46,23 @@ jobs:
           done
           echo "available=$found" >> "$GITHUB_OUTPUT"
 
+      - name: Check ARMv7 PTY assets
+        id: pty
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://api.github.com/repos/bd-loser/bun-termux/releases/tags/bun-pty-v0.4.11 -o /tmp/bun-pty.json
+          curl -fsSL https://api.github.com/repos/bd-loser/bun-termux/releases/tags/opencode-pty-v0.2.0 -o /tmp/opencode-pty.json
+          python3 - <<'PY'
+          import json, os
+          docs=[json.load(open(p)) for p in ("/tmp/bun-pty.json","/tmp/opencode-pty.json")]
+          names=[a["name"] for d in docs for a in d.get("assets",[])]
+          arm=[n for n in names if any(x in n.lower() for x in ("armv7","armv7l","armhf","arm32"))]
+          print("PTY assets:", names)
+          print("ARMv7 PTY assets:", arm or "(none)")
+          with open(os.environ["GITHUB_OUTPUT"],"a") as f:
+              f.write("available="+("true" if arm else "false")+"\n")
+          PY
       - name: Check project pins and summarize
         shell: bash
         run: |
@@ -64,9 +81,20 @@ jobs:
             echo ""
             echo "- Bun 32-bit ARM asset: `${{ steps.bun.outputs.armv7_asset }}`"
             echo "- OpenTUI ARMv7 npm package: `${{ steps.opentui.outputs.available }}`"
+            echo "- PTY ARMv7 assets: `${{ steps.pty.outputs.available }}`"
             echo ""
             echo "A missing prerequisite blocks a native ARMv7 release. This check does not build or publish an ARM32 binary."
           } >> "$GITHUB_STEP_SUMMARY"
-      - name: Keep the release pipeline protected
+      - name: Enforce ARMv7 prerequisites
+        shell: bash
+        env:
+          BUN_ARMV7: ${{ steps.bun.outputs.armv7_asset }}
+          OPENTUI_ARMV7: ${{ steps.opentui.outputs.available }}
+          PTY_ARMV7: ${{ steps.pty.outputs.available }}
         run: |
-          echo "Preflight complete. Do not change the AArch64 release workflow until all ARMv7 runtime and native prerequisites exist."
+          set -euo pipefail
+          if [[ "$BUN_ARMV7" != true || "$OPENTUI_ARMV7" != true || "$PTY_ARMV7" != true ]]; then
+            echo "::error::ARMv7 build blocked: required 32-bit runtime/native assets are missing. No ARM32 release will be produced."
+            exit 1
+          fi
+          echo "All prerequisite assets detected. Continue with separate ARMv7 build validation."
