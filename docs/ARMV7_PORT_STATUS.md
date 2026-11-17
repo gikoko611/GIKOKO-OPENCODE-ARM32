@@ -49,3 +49,20 @@ A successful OpenTUI native library build is not a successful OpenCode port. Do 
 - **Not yet verified:** Node `node:ffi` execution, FFI marshalling, OpenTUI loading, terminal rendering, or any Redmi 9A device behavior. The smoke script must be run on the actual 32-bit Termux Node runtime.
 
 The next gate is the on-device smoke test, followed by the separate PTY/native-dependency work. The full OpenCode CLI remains incomplete.
+
+
+## Redmi 9A device-side Node FFI result (2026-11-17)
+
+The user ran the packaged `test-node-ffi-armv7.sh` on the target Redmi 9A / Termux and reported:
+
+```text
+Node: v26.4.0
+Arch: arm
+PASS: Node node:ffi loaded Android ARMv7 .so
+PASS: i32, u64, f64 and pointer argument/return calls
+Node: 26.4.0; arch: arm; platform: android
+```
+
+This is direct device evidence that the Termux Node v26.4.0 runtime is 32-bit ARM, the experimental `node:ffi` module loads, an Android ARMv7 shared library loads, and the tested integer/floating-point/pointer calls pass. The FFI API remains experimental, as Node warns.
+
+**Status upgrade:** Node runtime + basic ARMv7 Node FFI smoke test are now proven on the target device. This does not yet prove that OpenTUI's full generated FFI table, renderer initialization, terminal input/output, or OpenCode itself works. Continue with an OpenTUI-specific FFI integration test, then PTY and the remaining native dependencies.
