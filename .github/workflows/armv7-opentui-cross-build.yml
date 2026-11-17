@@ -51,6 +51,7 @@ jobs:
           msvc_lib_dir=
           kernel32_lib_dir=
           gcc_dir=
+          darwin_sdk_dir=
           EOF
           cat "$GITHUB_WORKSPACE/android-libc.txt"
           zig version
