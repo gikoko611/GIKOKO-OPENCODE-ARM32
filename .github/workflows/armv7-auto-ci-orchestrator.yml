@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - armv7/pty-forkexec-device-probe
-  pull_request:
   workflow_dispatch:
   schedule:
     - cron: "17 */6 * * *"
