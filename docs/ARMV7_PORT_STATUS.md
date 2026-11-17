@@ -14,14 +14,14 @@ The current release pipeline remains AArch64-oriented. Keep it unchanged until a
 
 - Termux Node.js ARM package preflight succeeded (run `43999676467`): package checksum verified and executable identified as ELF32 ARM EABI5. Static package evidence only; not a runtime test on the phone.
 - Node compatibility audit succeeded (run `44004450476`): registry probes found candidate packages, but did not establish Android Bionic ARMv7 prebuilds or runtime compatibility.
-- OpenTUI custom-target experiment failed (run `44004450442`). Zig 0.17.0 and OpenTUI v0.8.3 source/dependencies were fetched. Compilation failed in three `zig translate-c -lc` steps because the cross-build resolved Ubuntu host glibc header `/usr/include/x86_64-linux-gnu/gnu/stubs.h`, which tried to include missing `gnu/stubs-32.h`. No OpenTUI ARMv7 shared library was produced; the uploaded artifact is diagnostic only.
-- The attempted command was `zig build -Dlibrary-target=arm-linux-android.29 -Doptimize=ReleaseFast`. The custom target was accepted far enough to start compilation, but Android/Bionic headers and linking were not validated.
+- OpenTUI cross-build run `44011061039` passed the Android NDK/Bionic header and translate-C setup, and passed the previous missing `dl`/`pthread`/`m` link stage. It then failed with decisive 32-bit source/ABI blockers: `src/context-abi.zig` emits `The OpenTUI C ABI requires a 64-bit target`; `src/scene-record.zig` asserts `@sizeOf(usize) >= 8`; and multiple `u64` atomic operations in OpenTUI and Zig std fail on this ARMv7 target. The C++ sub-build also rejects the injected `-mfloat-abi=hard` flag for `armv7-unknown-linux...-android29`. No ARMv7 `.so` was produced; the uploaded artifact contains diagnostics only.
+- The attempted command was `zig build --libc android-libc.txt -Dlibrary-target=arm-linux-android.29 -Doptimize=ReleaseFast`. This proves the remaining failure is no longer just a missing sysroot or separate Bionic library link: OpenTUI v0.8.3's native ABI and implementation assume 64-bit. It needs a deliberate ARM32 source/ABI port (including pointer/handle layout, scene record sizing, 64-bit atomic fallbacks, and Android compiler flags) before another full build attempt.
 
 Workflow: [ARMv7 OpenTUI native cross-build experiment](../.github/workflows/armv7-opentui-cross-build.yml).
 
 ## OpenTUI target gap
 
-OpenTUI v0.8.3 officially lists Linux x86_64/aarch64 (glibc/musl), macOS x86_64/aarch64, and Windows x86_64/aarch64. Android and ARMv7 are excluded. The custom-target experiment exposed a host-glibc header leak. The next attempt must configure an Android NDK/Bionic sysroot correctly; changing package metadata or renaming output is not a port.
+OpenTUI v0.8.3 officially lists 64-bit Linux, macOS, and Windows targets; Android and ARMv7 are excluded. The NDK/Bionic sysroot experiment removed the earlier host-header and Bionic library-link blockers, but compilation then reached explicit 64-bit-only source assertions and unsupported 64-bit atomic operations. This is a source/ABI compatibility gap, not a simple linker configuration issue. Do not repeat the same cross-build until the native ABI and implementation have been ported to 32-bit.
 
 ## Runtime investigation
 
@@ -45,4 +45,4 @@ Do not publish a placeholder or AArch64 binary under an ARM32 release name.
 
 ## Second OpenTUI cross-build attempt
 
-The experiment workflow now installs Android NDK 27.2.12479018 and passes a Zig `--libc` configuration targeting the Android API 29 Bionic sysroot. This directly addresses the host-glibc header leak seen in run `44004450442`. The next CI result is pending; no ARMv7 library is claimed until ELF and linkage checks pass.
+The experiment workflow now reaches OpenTUI compilation using Android NDK 27.2.12479018 and the API 29 Bionic sysroot. Run `44011061039` confirms that the next blockers are OpenTUI's 64-bit-only C ABI, `usize` assumptions, `u64` atomics, and an incompatible hard-float flag. No ARMv7 library was produced. A genuine ARM32 source port is required before the build can pass.
