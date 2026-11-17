@@ -11,6 +11,7 @@ on:
       - "termux/armv7/node-runtime-smoke.mjs"
       - "termux/armv7/node-opentui-load-smoke.mjs"
       - "termux/armv7/pty-api-smoke.c"
+      - "termux/armv7/pty-forkexec-smoke.c"
       - "termux/armv7/node-pty-api-smoke.mjs"
       - "termux/test-node-runtime-armv7.sh"
       - "termux/test-opentui-armv7.sh"
@@ -540,6 +541,33 @@ jobs:
             echo "- Device-side execution is required; this compile does not prove full node-pty semantics."
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Build Android ARMv7 forkpty child lifecycle probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi29-clang"
+          test -x "$CC"
+          "$CC" -O2 -Wall -Wextra -Werror -mfloat-abi=softfp -mfpu=vfpv3-d16 \
+            "$GITHUB_WORKSPACE/termux/armv7/pty-forkexec-smoke.c" \
+            -o "$GITHUB_WORKSPACE/pty-forkexec-smoke-android-armv7"
+          file "$GITHUB_WORKSPACE/pty-forkexec-smoke-android-armv7"
+          readelf -h "$GITHUB_WORKSPACE/pty-forkexec-smoke-android-armv7" | tee "$GITHUB_WORKSPACE/pty-forkexec-elf-header.txt"
+          readelf -d "$GITHUB_WORKSPACE/pty-forkexec-smoke-android-armv7" | tee "$GITHUB_WORKSPACE/pty-forkexec-dynamic-section.txt"
+          grep -q 'Class:.*ELF32' "$GITHUB_WORKSPACE/pty-forkexec-elf-header.txt"
+          grep -Eq 'Machine:.*ARM' "$GITHUB_WORKSPACE/pty-forkexec-elf-header.txt"
+          grep -Eq 'Version5 EABI' "$GITHUB_WORKSPACE/pty-forkexec-elf-header.txt"
+          grep -Eq 'soft-float ABI' "$GITHUB_WORKSPACE/pty-forkexec-elf-header.txt"
+          if grep -Eqi 'libc\\.so\\.6|ld-linux|libstdc\\+\\+\\.so' "$GITHUB_WORKSPACE/pty-forkexec-dynamic-section.txt"; then
+            echo "ERROR: non-Android runtime dependency found in forkpty probe" >&2
+            exit 1
+          fi
+          {
+            echo "## Android ARMv7 forkpty child lifecycle probe"
+            echo "- Cross-compiled forkpty/exec/waitpid PTY test as ELF32 ARM EABI5."
+            echo "- Device test checks controlling terminal, child output, terminal dimensions, and exit status."
+            echo "- Cross-compilation is not a substitute for executing this probe on the Redmi 9A."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload native build evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -568,5 +596,8 @@ jobs:
             pty-api-dynamic-section.txt
             node-pty-api-smoke.mjs
             test-pty-api-armv7.sh
+            pty-forkexec-smoke-android-armv7
+            pty-forkexec-elf-header.txt
+            pty-forkexec-dynamic-section.txt
           if-no-files-found: ignore
           retention-days: 14
