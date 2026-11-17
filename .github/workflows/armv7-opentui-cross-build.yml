@@ -8,6 +8,9 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/armv7-opentui-cross-build.yml"
+      - "termux/armv7/pty-termux.node.ts"
+      - "termux/ci/apply-armv7-pty-adapter.sh"
+      - "termux/ci/prepare-build-tree.sh"
       - "termux/armv7/node-runtime-smoke.mjs"
       - "termux/armv7/node-opentui-load-smoke.mjs"
       - "termux/armv7/pty-api-smoke.c"
@@ -22,6 +25,9 @@ on:
   pull_request:
     paths:
       - ".github/workflows/armv7-opentui-cross-build.yml"
+      - "termux/armv7/pty-termux.node.ts"
+      - "termux/ci/apply-armv7-pty-adapter.sh"
+      - "termux/ci/prepare-build-tree.sh"
       - "termux/armv7/pty-api-smoke.c"
       - "termux/armv7/pty-forkexec-smoke.c"
       - "termux/armv7/termux-pty-android.c"
@@ -619,6 +625,18 @@ jobs:
             echo "- Device smoke test validates addon loading, child input/output, resize and exit status."
             echo "- This is a native PTY adapter probe, not yet the complete upstream node-pty/persistent PTY integration."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify upstream Node PTY adapter integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch v2.3.0 https://github.com/anomalyco/opencode.git "$RUNNER_TEMP/opencode-pty-check"
+          bash "$GITHUB_WORKSPACE/termux/ci/apply-armv7-pty-adapter.sh" "$RUNNER_TEMP/opencode-pty-check"
+          grep -q 'process.platform === "android" && process.arch === "arm"' "$RUNNER_TEMP/opencode-pty-check/packages/core/src/pty/pty.node.ts"
+          grep -q 'native.spawn(file, args' "$RUNNER_TEMP/opencode-pty-check/packages/core/src/pty/pty.termux.node.ts"
+          echo "Verified adapter is applied to pinned OpenCode v2.3.0 source."
+          echo "- Android ARMv7 Node PTY adapter is wired to the upstream Node PTY entrypoint." >> "$GITHUB_STEP_SUMMARY"
+          echo "- Native addon device execution and persistent daemon integration remain separate validation tasks." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Assemble one-download ARMv7 native test bundle
         if: success()
