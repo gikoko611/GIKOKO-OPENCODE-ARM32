@@ -15,6 +15,10 @@ The first custom-target attempts exposed host-header, 64-bit ABI, atomic, C++ fl
 
 This proves the native library can be cross-compiled, but does not yet prove Node FFI can load it or that terminal rendering works on-device. See [successful build artifact](https://github.com/gikoko611/GIKOKO-OPENCODE-ARM32/actions/runs/44018098285).
 
+## OpenTUI Node FFI source audit
+
+Pinned OpenTUI v0.8.3 already implements a Node backend using `node:ffi`; the package declares Node >=26.4.0. Its generated native ABI currently has 366 symbol declarations and no `usize` types, avoiding one explicit Node-backend limitation in that table. However, OpenTUI's Node asset-target resolver only accepts `arm64` and `x64`, and it previously evaluated that target before honoring `OPENTUI_LIB_PATH`. The ARMv7 experiment workflow now patches the resolver to check the explicit path first. This is a source-level integration patch only; Node FFI loading and native calls still require runtime/device validation.
+
 ## Native package probes
 Node compatibility audit run `44004450476` completed as a registry/metadata audit. Candidate releases were found for `@lydell/node-pty`, `@parcel/watcher`, `@ff-labs/fff-node`, and `@silvia-odwyer/photon-node`; package existence does not prove Android Bionic ARMv7 prebuilds or source-build compatibility. No `@androidtui/core-android-arm` or `@androidtui/core-android-armv7` package was found.
 
