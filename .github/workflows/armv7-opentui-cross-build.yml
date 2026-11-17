@@ -1,0 +1,88 @@
+name: ARMv7 OpenTUI native cross-build experiment
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "docs/ARMV7_*.md"
+      - ".github/workflows/armv7-opentui-cross-build.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-opentui-android-armv7:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout port repository
+        uses: actions/checkout@v4
+
+      - name: Install Zig 0.17.0
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+
+      - name: Fetch pinned OpenTUI source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch v0.8.3 https://github.com/anomalyco/opentui.git opentui
+          test -s opentui/packages/native/src/vendor/zig-deps.tar.gz
+          zig version
+          sha256sum opentui/packages/native/src/vendor/zig-deps.tar.gz | tee opentui-vendor-sha256.txt
+
+      - name: Prepare vendored Zig dependencies
+        working-directory: opentui/packages/native
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh scripts/prepare-zig-deps.sh
+          test -f zig-deps/.ready
+
+      - name: Cross-compile Android ARMv7 native library
+        working-directory: opentui/packages/native
+        shell: bash
+        run: |
+          set -euo pipefail
+          # buildSingleTarget() accepts custom Zig triples, so this experiment
+          # does not patch or alter the upstream SUPPORTED_TARGETS list.
+          zig build -Dlibrary-target=arm-linux-android.29 -Doptimize=ReleaseFast --summary all
+
+      - name: Verify ELF32 ARM output and Android linkage
+        working-directory: opentui/packages/native
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="lib/arm-linux-android.29"
+          test -d "$OUT"
+          find "$OUT" -maxdepth 2 -type f -print
+          LIB="$(find "$OUT" -type f -name 'libopentui.so' -print -quit)"
+          test -n "$LIB"
+          file "$LIB"
+          readelf -h "$LIB" | tee "$GITHUB_WORKSPACE/opentui-elf-header.txt"
+          readelf -d "$LIB" | tee "$GITHUB_WORKSPACE/opentui-dynamic-section.txt"
+          grep -q 'Class:.*ELF32' "$GITHUB_WORKSPACE/opentui-elf-header.txt"
+          grep -Eq 'Machine:.*ARM' "$GITHUB_WORKSPACE/opentui-elf-header.txt"
+          if readelf -d "$LIB" | grep -Eqi 'libc\.so\.6|ld-linux'; then
+            echo "ERROR: glibc dependency found in Android target" >&2
+            exit 1
+          fi
+          cp "$LIB" "$GITHUB_WORKSPACE/libopentui-android-armv7.so"
+          echo "## OpenTUI Android ARMv7 cross-build" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Native library compiled from upstream OpenTUI v0.8.3." >> "$GITHUB_STEP_SUMMARY"
+          echo "- ELF32 ARM and no glibc dynamic dependency verified." >> "$GITHUB_STEP_SUMMARY"
+          echo "- This does not yet prove Node FFI compatibility or terminal rendering on-device." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload native build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: opentui-android-armv7-experiment
+          path: |
+            libopentui-android-armv7.so
+            opentui-elf-header.txt
+            opentui-dynamic-section.txt
+            opentui-vendor-sha256.txt
+          if-no-files-found: ignore
+          retention-days: 14
