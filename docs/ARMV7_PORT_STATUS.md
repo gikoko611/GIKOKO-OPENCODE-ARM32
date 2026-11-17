@@ -66,3 +66,20 @@ Node: 26.4.0; arch: arm; platform: android
 This is direct device evidence that the Termux Node v26.4.0 runtime is 32-bit ARM, the experimental `node:ffi` module loads, an Android ARMv7 shared library loads, and the tested integer/floating-point/pointer calls pass. The FFI API remains experimental, as Node warns.
 
 **Status upgrade:** Node runtime + basic ARMv7 Node FFI smoke test are now proven on the target device. This does not yet prove that OpenTUI's full generated FFI table, renderer initialization, terminal input/output, or OpenCode itself works. Continue with an OpenTUI-specific FFI integration test, then PTY and the remaining native dependencies.
+
+
+## Redmi 9A on-device Node FFI result (2026-11-17)
+
+The user ran the artifact's `test-node-ffi-armv7.sh` on the target Redmi 9A / Termux and returned this output:
+
+```text
+Node: v26.4.0
+Arch: arm
+PASS: Node node:ffi loaded Android ARMv7 .so
+PASS: i32, u64, f64 and pointer argument/return calls
+Node: 26.4.0; arch: arm; platform: android
+```
+
+This is the first direct device-side runtime proof for the Node FFI path: Node v26.4.0 on Android reports 32-bit ARM, loads an Android ARMv7 shared object through `node:ffi`, and successfully calls native functions with i32, u64, f64, and pointer arguments/returns. The experimental FFI warning is expected because Node marks this API experimental.
+
+**This does not yet prove OpenTUI's 20.5 MB native library can be loaded through OpenTUI's generated 366-symbol binding, nor that terminal rendering works.** The next gate is an OpenTUI-specific FFI integration test on the same device. Full OpenCode CLI, PTY, and other native dependencies remain outstanding.
