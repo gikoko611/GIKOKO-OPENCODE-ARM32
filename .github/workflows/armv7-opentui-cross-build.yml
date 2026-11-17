@@ -24,13 +24,17 @@ jobs:
           version: 0.17.0
 
       - name: Install Android NDK for API 29
-        uses: android-actions/setup-android@v3
-
-      - name: Install pinned Android NDK
         shell: bash
         run: |
           set -euo pipefail
-          sdkmanager --install "ndk;27.2.12479018"
+          : "${ANDROID_HOME:?GitHub Ubuntu runner must provide ANDROID_HOME}"
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -perm -u+x 2>/dev/null | sort | tail -n 1)"
+          if [ -z "$SDKMANAGER" ]; then
+            echo "sdkmanager not found under $ANDROID_HOME/cmdline-tools" >&2
+            exit 1
+          fi
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --install "ndk;27.2.12479018"
           NDK="$ANDROID_HOME/ndk/27.2.12479018"
           SYSROOT="$NDK/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
           test -d "$SYSROOT/usr/include/arm-linux-androideabi"
@@ -72,8 +76,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Zig's libc config must point at the NDK sysroot; otherwise translate-c
-          # may pick the Ubuntu runner's glibc headers (the failure in run 44004450442).
           zig build --libc "$GITHUB_WORKSPACE/android-libc.txt" \
             -Dlibrary-target=arm-linux-android.29 \
             -Doptimize=ReleaseFast --summary all
