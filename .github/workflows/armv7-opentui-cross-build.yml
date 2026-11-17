@@ -337,10 +337,12 @@ jobs:
             exit 1
           fi
           cp "$LIB" "$GITHUB_WORKSPACE/libopentui-android-armv7.so"
-          echo "## OpenTUI Android ARMv7 cross-build" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Native library compiled with the Android NDK API 29 Bionic sysroot." >> "$GITHUB_STEP_SUMMARY"
-          echo "- ELF32 ARM and no glibc dynamic dependency verified." >> "$GITHUB_STEP_SUMMARY"
-          echo "- Node FFI compatibility and on-device terminal rendering remain unverified." >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "## OpenTUI Android ARMv7 cross-build"
+            echo "- Native library compiled with the Android NDK API 29 Bionic sysroot."
+            echo "- ELF32 ARM and no glibc dynamic dependency verified."
+            echo "- Node FFI compatibility and on-device terminal rendering remain unverified."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload native build evidence
         if: always()
