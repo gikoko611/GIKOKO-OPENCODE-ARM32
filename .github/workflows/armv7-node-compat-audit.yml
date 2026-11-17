@@ -1,0 +1,112 @@
+name: ARMv7 Node compatibility audit
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "versions.json"
+      - "docs/ARMV7_*.md"
+      - ".github/workflows/armv7-node-compat-audit.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  audit-upstream-node-path:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Inspect pinned upstream Node runtime implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch v2.3.0 https://github.com/anomalyco/opencode.git upstream
+          python3 - <<'PY'
+          import json, pathlib, re
+          root = pathlib.Path("upstream")
+          required = [
+            "packages/cli/script/build-node.ts",
+            "packages/core/package.json",
+            "packages/core/src/pty/pty.node.ts",
+            "packages/core/src/database/sqlite.node.ts",
+            "packages/tui/package.json",
+          ]
+          missing = [p for p in required if not (root / p).is_file()]
+          if missing:
+              raise SystemExit("Missing expected upstream Node files: " + ", ".join(missing))
+          build = (root / "packages/cli/script/build-node.ts").read_text()
+          core = json.loads((root / "packages/core/package.json").read_text())
+          tui = json.loads((root / "packages/tui/package.json").read_text())
+          node_targets = re.findall(r'nodeTarget\("([^"]+)",\s*"([^"]+)"\)', build)
+          print("Upstream Node SEA targets:", node_targets)
+          print("Core Node import conditions:", sorted(k for k,v in core.get("imports",{}).items() if isinstance(v,dict) and "node" in v))
+          print("TUI Node import conditions:", sorted(k for k,v in tui.get("imports",{}).items() if isinstance(v,dict) and "node" in v))
+          if any(arch in ("arm", "armv7", "armv7l") for _, arch in node_targets):
+              print("32-bit ARM target is present in upstream SEA build matrix.")
+          else:
+              print("BLOCKER: upstream Node SEA build matrix has no 32-bit ARM target.")
+          with open("node-audit.txt","w") as f:
+              f.write("Node SEA targets: " + repr(node_targets) + "\\n")
+              f.write("Core Node import conditions: " + repr(sorted(k for k,v in core.get("imports",{}).items() if isinstance(v,dict) and "node" in v)) + "\\n")
+              f.write("TUI Node import conditions: " + repr(sorted(k for k,v in tui.get("imports",{}).items() if isinstance(v,dict) and "node" in v)) + "\\n")
+          PY
+
+      - name: Probe ARMv7 Android native package availability
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.error, urllib.parse, urllib.request
+          packages = [
+            "@androidtui/core-android-arm",
+            "@androidtui/core-android-armv7",
+            "@lydell/node-pty",
+            "@parcel/watcher",
+            "@ff-labs/fff-node",
+            "@silvia-odwyer/photon-node",
+          ]
+          results=[]
+          for name in packages:
+              url="https://registry.npmjs.org/"+urllib.parse.quote(name,safe="")
+              try:
+                  with urllib.request.urlopen(url,timeout=30) as r: data=json.load(r)
+                  version=data.get("dist-tags",{}).get("latest","unknown")
+                  print(f"FOUND {name}: latest={version}")
+                  results.append((name,"found",version))
+              except urllib.error.HTTPError as e:
+                  print(f"NOT FOUND {name}: HTTP {e.code}")
+                  results.append((name,"missing",str(e.code)))
+              except Exception as e:
+                  print(f"ERROR {name}: {e}")
+                  results.append((name,"error",str(e)))
+          with open("native-package-probe.txt","w") as f:
+              for row in results: f.write("\\t".join(row)+"\\n")
+          PY
+
+      - name: Summarize compatibility gates
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## ARMv7 Node compatibility audit"
+            echo ""
+            echo "- Upstream Node runtime branches are inspected from OpenCode v2.3.0."
+            echo "- The upstream Node SEA target matrix does not currently include Android ARMv7."
+            echo "- npm package existence does not prove Android/Bionic ARMv7 binary compatibility."
+            echo "- Required next gates: OpenTUI Zig renderer, node-pty addon, native dependency builds, and real-device tests."
+            echo ""
+            echo "This is a diagnostic audit only; it does not publish an ARM32 OpenCode binary."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: armv7-node-compat-audit
+          path: |
+            node-audit.txt
+            native-package-probe.txt
+          if-no-files-found: ignore
+          retention-days: 14
