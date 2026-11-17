@@ -53,3 +53,12 @@ Do not replace PTY with plain `child_process.spawn` and claim equivalent functio
 ## Decision
 
 PTY is a blocking integration item for a full ARMv7 OpenCode port. Do not silently disable terminal tools, persistent sessions, or shell features. Continue with a dedicated ARMv7 Android/Bionic PTY build and validate it on the target device.
+
+
+## Android API feasibility check
+
+Android Bionic documents `forkpty` and `openpty` as available starting at API level 23. The target device is Android 10 / API 29, so these PTY primitives are part of the target platform baseline. This removes the concern that the underlying libc simply lacks the required PTY entry points; it does **not** make the upstream Node addon compatible automatically.
+
+A practical implementation candidate is a small Android/Bionic ARMv7 Node-API addon or a carefully scoped native helper using `openpty`/`forkpty`, `ioctl(TIOCSWINSZ)`, `read`/`write`, `waitpid`, and signal delivery. It must keep fork/exec handling safe in a multithreaded Node process, avoid blocking the JS event loop, and implement descriptor/child cleanup. Validate all of this on-device before replacing `@lydell/node-pty`.
+
+Bionic API reference: https://android.googlesource.com/platform/bionic/+/HEAD/docs/status.md (the PTY entry points are listed under API level 23).
