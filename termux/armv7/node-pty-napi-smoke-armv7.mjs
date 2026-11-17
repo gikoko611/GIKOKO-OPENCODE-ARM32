@@ -1,8 +1,8 @@
 import assert from "node:assert/strict"
 import { createReadStream, writeSync } from "node:fs"
-import { once } from "node:events"
 import { setTimeout as delay } from "node:timers/promises"
 import path from "node:path"
+import { createRequire } from "node:module"
 import { fileURLToPath } from "node:url"
 
 if (process.platform !== "android" || process.arch !== "arm") {
@@ -10,8 +10,8 @@ if (process.platform !== "android" || process.arch !== "arm") {
 }
 const here = path.dirname(fileURLToPath(import.meta.url))
 const addonPath = path.resolve(process.argv[2] ?? path.join(here, "termux-pty-android-armv7.node"))
-const pty = await import(addonPath.startsWith("/") ? `file://${addonPath}` : addonPath)
-const api = pty.default ?? pty
+const require = createRequire(import.meta.url)
+const api = require(addonPath)
 for (const name of ["spawn", "resize", "signal", "wait", "close"]) {
   assert.equal(typeof api[name], "function", `missing N-API method: ${name}`)
 }
@@ -21,7 +21,6 @@ let output = ""
 const stream = createReadStream(null, { fd: child.fd, autoClose: false })
 stream.setEncoding("utf8")
 stream.on("data", chunk => { output += chunk })
-await once(stream, "open").catch(() => {})
 api.resize(child.fd, 40, 100)
 writeSync(child.fd, "TERMUX_NAPI_ARMV7\\n")
 const deadline = Date.now() + 7000
