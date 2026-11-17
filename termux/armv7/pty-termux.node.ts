@@ -31,6 +31,7 @@ function spawnPty(file: string, args: string[], opts: Opts): Proc {
   const exitListeners = new Set<(event: Exit) => void>()
   let exited = false
   let closed = false
+  let exitEvent: Exit | undefined
 
   const close = () => {
     if (closed) return
@@ -63,11 +64,11 @@ function spawnPty(file: string, args: string[], opts: Opts): Proc {
     exited = true
     clearInterval(poll)
     close()
-    const event: Exit = {
+    exitEvent = {
       exitCode: result.exitCode,
       ...(result.signal ? { signal: result.signal } : {}),
     }
-    for (const listener of exitListeners) listener(event)
+    for (const listener of exitListeners) listener(exitEvent)
     exitListeners.clear()
   }, 30)
   poll.unref?.()
@@ -80,7 +81,7 @@ function spawnPty(file: string, args: string[], opts: Opts): Proc {
     },
     onExit(listener): Disp {
       if (exited) {
-        listener({ exitCode: -1 })
+        listener(exitEvent ?? { exitCode: -1 })
         return { dispose() {} }
       }
       exitListeners.add(listener)
