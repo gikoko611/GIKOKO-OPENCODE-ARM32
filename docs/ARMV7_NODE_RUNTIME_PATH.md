@@ -23,6 +23,19 @@ The generated OpenTUI native ABI file contains 366 native symbol declarations an
 
 A concrete integration bug was also identified: `resolveNativeLibraryPath()` called `getNativeAssetDescriptor()` before checking `OPENTUI_LIB_PATH`. The asset target type accepts only `x64` and `arm64`, so a 32-bit Node process (`process.arch === "arm"`) throws before the custom Android library path can be used. The ARMv7 cross-build workflow now patches the resolver to honor `OPENTUI_LIB_PATH` first. This keeps the upstream default asset selection unchanged for supported platforms.
 
+## Artifact-level ELF audit (run 44020997587)
+
+The downloaded cross-build artifact was inspected directly after CI completed:
+
+- `libopentui-android-armv7.so` is an ELF32 little-endian ARM shared object, EABI5, soft-float ABI; size 20,524,828 bytes (about 19.6 MiB).
+- Its `DT_NEEDED` list is exactly `libm.so`, `libc.so`, and `libdl.so`; there is no `libc.so.6`, `ld-linux`, or `libstdc++.so` dependency.
+- The dynamic symbol table has 2,114 entries and exposes OpenTUI C symbols such as `otYogaNodeCreate`, `otYogaNodeCalculateLayout`, and `otYogaNodeStyleSetDimension`.
+- The separate `libc++_shared-android-armv7.so` file is present in the CI artifact, but it is **not** listed as a dynamic dependency of `libopentui.so`; it must not be treated as a required runtime library based on this build.
+
+This materially improves confidence in the Android/Bionic binary format and exported ABI, but it does not execute the library. Node `node:ffi` loading, pointer marshalling, FFI calls, TUI rendering, and Redmi 9A runtime behavior remain open gates.
+
+The workflow's ELF verification step has now been strengthened to enforce EABI5/soft-float, check the expected Bionic dependencies, reject glibc references, and archive dynamic symbols plus exported OpenTUI symbols for review.
+
 ## Required proof before switching the build
 
 1. Obtain a Termux `arm` Node.js package at version 26.4.0 or newer.
