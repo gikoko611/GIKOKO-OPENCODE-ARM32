@@ -98,3 +98,13 @@ The user ran the shipped `test-node-ffi-armv7.sh` on the target Redmi 9A in Term
 This is direct device-side proof that the installed 32-bit Termux Node 26.4.0 runtime can load an Android ARMv7 shared library through experimental `node:ffi` and correctly marshal the tested scalar and pointer values. The ExperimentalWarning is expected and is not a test failure.
 
 The result does **not** yet prove that `libopentui-android-armv7.so` itself loads, that the TUI renders, or that OpenCode runs. The next validation is to load the actual OpenTUI library and call its no-argument `ot_context_abi_version()` export, then run Node child-process/signal/filesystem checks. PTY and remaining native modules are still blocking integration items.
+
+
+## ARMv7 Bionic PTY probe (2026-11-17)
+
+- Added [Android Bionic `forkpty()` probe](../termux/armv7/pty-smoke.c) and a Termux runner.
+- Cross-build succeeded in [workflow run 44038559550](https://github.com/gikoko611/GIKOKO-OPENCODE-ARM32/actions/runs/44038559550).
+- Artifact: [armv7-pty-bionic-probe](https://github.com/gikoko611/GIKOKO-OPENCODE-ARM32/actions/runs/44038559550/artifacts/14307832800), artifact ID `14307832800`, 5,266 bytes, retained until 2026-12-01.
+- CI verified the executable as ELF32 little-endian ARM EABI5 soft-float, using Android's `/system/bin/linker`, with Bionic `libc.so` and `libdl.so` dependencies and no glibc dependency.
+- **Not yet device verified:** run `bash test-pty-armv7.sh` in Termux after extracting the artifact. This test exercises `forkpty()`, PTY input/output, a 37x91 terminal window size, and clean child exit.
+- This probe is diagnostic only. It is not yet the `@lydell/node-pty` implementation or OpenCode's PTY adapter. A successful Redmi 9A test is required before designing the integration layer.
