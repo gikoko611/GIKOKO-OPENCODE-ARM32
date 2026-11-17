@@ -19,6 +19,8 @@ The following files exist in upstream OpenCode 2.3.0:
 
 These existing Node branches mean a Node port should be based on upstream's Node runtime implementation, not by rewriting all Bun APIs blindly.
 
+The v2.3.0 Node build has a second hard target gate in `packages/cli/src/node/target.ts`: it accepts only `darwin`, `linux`, or `win32`, and only `arm64` or `x64`. It constructs platform-specific package names for node-pty, Parcel Watcher, FFF, and FFF FFI. The Node bundle asset collector then resolves those native packages and OpenTUI's Node assets before Vite builds. Therefore adding `arm` to the SEA matrix alone is not sufficient; an Android/Termux target requires a new target descriptor, compatible native packages or explicit tested fallbacks, and an OpenTUI native asset strategy.
+
 ## Confirmed OpenTUI v0.8.3 target gap (checked 2026-11-17)
 
 The pinned OpenTUI version used by this project is 0.8.3. Its upstream `packages/native/build.zig` defines exactly eight `SUPPORTED_TARGETS`: Linux x86_64/aarch64 (glibc and musl), macOS x86_64/aarch64, and Windows x86_64/aarch64. It does **not** define Android, Linux ARMv7, or a 32-bit ARM target. The v0.8.3 native README documents the Zig build flow and `-Dlibrary-target`, but that option only selects a target from the explicit supported-target list. Therefore an ARMv7 Android renderer requires a maintained source patch/port and a verified Bionic toolchain; changing the package name or target metadata is insufficient.
