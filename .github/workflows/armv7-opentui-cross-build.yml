@@ -257,36 +257,38 @@ jobs:
 
           Path("src/atomic64_android.c").write_text("""#include <stdint.h>
           
-          /* ARMv7 does not expose lock-free 64-bit atomics to Zig's std.atomic API.
-           * Clang lowers these builtins to the Android ARMv7 atomic runtime sequence. */
-          __attribute__((visibility("default")))
-          uint64_t ot_atomic_u64_load(const uint64_t *value) {
+          /* Zig exports the public ABI wrappers; these are private C implementations. */
+          uint64_t ot_atomic_u64_load_impl(const uint64_t *value) {
               return __atomic_load_n(value, __ATOMIC_RELAXED);
           }
           
-          __attribute__((visibility("default")))
-          uint64_t ot_atomic_u64_fetch_add(uint64_t *value, uint64_t amount) {
+          uint64_t ot_atomic_u64_fetch_add_impl(uint64_t *value, uint64_t amount) {
               return __atomic_fetch_add(value, amount, __ATOMIC_RELAXED);
           }
           
-          __attribute__((visibility("default")))
-          int ot_atomic_u64_compare_exchange(uint64_t *value, uint64_t *expected, uint64_t desired) {
+          int ot_atomic_u64_compare_exchange_impl(uint64_t *value, uint64_t *expected, uint64_t desired) {
               return __atomic_compare_exchange_n(value, expected, desired, 0,
                                                  __ATOMIC_RELAXED, __ATOMIC_RELAXED);
           }
           """)
-          Path("src/atomic64.zig").write_text("""extern "c" fn ot_atomic_u64_load(value: *const u64) u64;
-          extern "c" fn ot_atomic_u64_fetch_add(value: *u64, amount: u64) u64;
-          extern "c" fn ot_atomic_u64_compare_exchange(value: *u64, expected: *u64, desired: u64) c_int;
-
-          pub fn load(value: *const u64) u64 {
-              return ot_atomic_u64_load(value);
+          Path("src/atomic64.zig").write_text("""extern "c" fn ot_atomic_u64_load_impl(value: *const u64) u64;
+          extern "c" fn ot_atomic_u64_fetch_add_impl(value: *u64, amount: u64) u64;
+          extern "c" fn ot_atomic_u64_compare_exchange_impl(value: *u64, expected: *u64, desired: u64) c_int;
+          
+          pub export fn ot_atomic_u64_load(value: *const u64) u64 {
+              return ot_atomic_u64_load_impl(value);
           }
-
-          pub fn fetchAdd(value: *u64, amount: u64) u64 {
-              return ot_atomic_u64_fetch_add(value, amount);
+          
+          pub export fn ot_atomic_u64_fetch_add(value: *u64, amount: u64) u64 {
+              return ot_atomic_u64_fetch_add_impl(value, amount);
           }
-
+          
+          pub export fn ot_atomic_u64_compare_exchange(value: *u64, expected: *u64, desired: u64) c_int {
+              return ot_atomic_u64_compare_exchange_impl(value, expected, desired);
+          }
+          
+          pub fn load(value: *const u64) u64 { return ot_atomic_u64_load(value); }
+          pub fn fetchAdd(value: *u64, amount: u64) u64 { return ot_atomic_u64_fetch_add(value, amount); }
           pub fn compareExchange(value: *u64, expected: *u64, desired: u64) bool {
               return ot_atomic_u64_compare_exchange(value, expected, desired) != 0;
           }
