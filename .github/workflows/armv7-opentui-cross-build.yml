@@ -13,7 +13,7 @@ permissions:
 jobs:
   build-opentui-android-armv7:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Checkout port repository
         uses: actions/checkout@v4
@@ -23,13 +23,40 @@ jobs:
         with:
           version: 0.17.0
 
+      - name: Install Android NDK for API 29
+        uses: android-actions/setup-android@v3
+
+      - name: Install pinned Android NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager --install "ndk;27.2.12479018"
+          NDK="$ANDROID_HOME/ndk/27.2.12479018"
+          SYSROOT="$NDK/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
+          test -d "$SYSROOT/usr/include/arm-linux-androideabi"
+          test -d "$SYSROOT/usr/lib/arm-linux-androideabi/29"
+          {
+            echo "ANDROID_NDK_HOME=$NDK"
+            echo "ANDROID_SYSROOT=$SYSROOT"
+          } >> "$GITHUB_ENV"
+          cat > "$GITHUB_WORKSPACE/android-libc.txt" <<EOF
+          include_dir=$SYSROOT/usr/include
+          sys_include_dir=$SYSROOT/usr/include/arm-linux-androideabi
+          crt_dir=$SYSROOT/usr/lib/arm-linux-androideabi/29
+          static_crt_dir=
+          msvc_lib_dir=
+          kernel32_lib_dir=
+          gcc_dir=
+          EOF
+          cat "$GITHUB_WORKSPACE/android-libc.txt"
+          zig version
+
       - name: Fetch pinned OpenTUI source
         shell: bash
         run: |
           set -euo pipefail
           git clone --depth 1 --branch v0.8.3 https://github.com/anomalyco/opentui.git opentui
           test -s opentui/packages/native/src/vendor/zig-deps.tar.gz
-          zig version
           sha256sum opentui/packages/native/src/vendor/zig-deps.tar.gz | tee opentui-vendor-sha256.txt
 
       - name: Prepare vendored Zig dependencies
@@ -40,14 +67,16 @@ jobs:
           sh scripts/prepare-zig-deps.sh
           test -f zig-deps/.ready
 
-      - name: Cross-compile Android ARMv7 native library
+      - name: Cross-compile with Android Bionic sysroot
         working-directory: opentui/packages/native
         shell: bash
         run: |
           set -euo pipefail
-          # buildSingleTarget() accepts custom Zig triples, so this experiment
-          # does not patch or alter the upstream SUPPORTED_TARGETS list.
-          zig build -Dlibrary-target=arm-linux-android.29 -Doptimize=ReleaseFast --summary all
+          # Zig's libc config must point at the NDK sysroot; otherwise translate-c
+          # may pick the Ubuntu runner's glibc headers (the failure in run 44004450442).
+          zig build --libc "$GITHUB_WORKSPACE/android-libc.txt" \
+            -Dlibrary-target=arm-linux-android.29 \
+            -Doptimize=ReleaseFast --summary all
 
       - name: Verify ELF32 ARM output and Android linkage
         working-directory: opentui/packages/native
@@ -70,9 +99,9 @@ jobs:
           fi
           cp "$LIB" "$GITHUB_WORKSPACE/libopentui-android-armv7.so"
           echo "## OpenTUI Android ARMv7 cross-build" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Native library compiled from upstream OpenTUI v0.8.3." >> "$GITHUB_STEP_SUMMARY"
+          echo "- Native library compiled with the Android NDK API 29 Bionic sysroot." >> "$GITHUB_STEP_SUMMARY"
           echo "- ELF32 ARM and no glibc dynamic dependency verified." >> "$GITHUB_STEP_SUMMARY"
-          echo "- This does not yet prove Node FFI compatibility or terminal rendering on-device." >> "$GITHUB_STEP_SUMMARY"
+          echo "- Node FFI compatibility and on-device terminal rendering remain unverified." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload native build evidence
         if: always()
@@ -84,5 +113,6 @@ jobs:
             opentui-elf-header.txt
             opentui-dynamic-section.txt
             opentui-vendor-sha256.txt
+            android-libc.txt
           if-no-files-found: ignore
           retention-days: 14
