@@ -11,13 +11,9 @@ Termux Node package preflight run `43999676467` verified the package checksum an
 ## OpenTUI source and target investigation
 Pinned upstream OpenTUI v0.8.3. Its native `build.zig` officially lists Linux x86_64/aarch64 (glibc and musl), macOS x86_64/aarch64, and Windows x86_64/aarch64. Android and ARMv7 are not included, and the matching core package manifest has no Android ARMv7 optional package.
 
-A custom-target experiment first exposed a host-glibc header leak. The subsequent NDK/Bionic sysroot attempt (workflow run `44011061039`) got past translate-C and the separate `dl`/`pthread`/`m` link stage, but failed inside OpenTUI v0.8.3 itself:
-- `src/context-abi.zig` explicitly rejects non-64-bit targets (`The OpenTUI C ABI requires a 64-bit target`).
-- `src/scene-record.zig` asserts `@sizeOf(usize) >= 8`.
-- Multiple `u64` atomics in OpenTUI and Zig std are unsupported for this ARMv7 target.
-- The C++ sub-build rejects `-mfloat-abi=hard` for the selected Android target.
+The first custom-target attempts exposed host-header, 64-bit ABI, atomic, C++ flag, and NDK startup-object path issues. These were addressed in the isolated ARMv7 experiment workflow. **Run `44018098285` succeeded (13/13 steps)** and produced `libopentui.so`, verified as ELF32 little-endian ARM EABI5. Its dynamic section references Android Bionic `libc.so`, `libdl.so`, and `libm.so`; no glibc `libc.so.6` or `ld-linux` dependency was found. The experiment applies a 32-bit ABI sizing/overflow-safe record-size patch and C-backed 64-bit atomic operations for ARMv7.
 
-No ARMv7 shared library was produced. The remaining work is a genuine ARM32 port of the native ABI and implementation, not another sysroot or library-name tweak. A successful native build would still require Node FFI and on-device terminal-rendering tests.
+This proves the native library can be cross-compiled, but does not yet prove Node FFI can load it or that terminal rendering works on-device. See [successful build artifact](https://github.com/gikoko611/GIKOKO-OPENCODE-ARM32/actions/runs/44018098285).
 
 ## Native package probes
 Node compatibility audit run `44004450476` completed as a registry/metadata audit. Candidate releases were found for `@lydell/node-pty`, `@parcel/watcher`, `@ff-labs/fff-node`, and `@silvia-odwyer/photon-node`; package existence does not prove Android Bionic ARMv7 prebuilds or source-build compatibility. No `@androidtui/core-android-arm` or `@androidtui/core-android-armv7` package was found.
