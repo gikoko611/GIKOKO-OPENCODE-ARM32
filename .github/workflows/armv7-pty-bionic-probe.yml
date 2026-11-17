@@ -1,0 +1,81 @@
+name: ARMv7 Android Bionic PTY probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, "armv7/**"]
+    paths:
+      - ".github/workflows/armv7-pty-bionic-probe.yml"
+      - "termux/armv7/pty-smoke.c"
+      - "termux/test-pty-armv7.sh"
+  pull_request:
+    paths:
+      - ".github/workflows/armv7-pty-bionic-probe.yml"
+      - "termux/armv7/pty-smoke.c"
+      - "termux/test-pty-armv7.sh"
+
+permissions:
+  contents: read
+
+jobs:
+  build-android-armv7-pty-probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Android NDK API 29
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${ANDROID_HOME:?ANDROID_HOME is required on the hosted runner}"
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -perm -u+x 2>/dev/null | sort | tail -n 1)"
+          test -n "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --install "ndk;27.2.12479018"
+          echo "NDK=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+      - name: Compile forkpty probe for Android ARMv7
+        shell: bash
+        run: |
+          set -euo pipefail
+          CC="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi29-clang"
+          test -x "$CC"
+          mkdir -p dist
+          "$CC" -std=c11 -O2 -Wall -Wextra -Werror \
+            -mfloat-abi=softfp -mfpu=vfpv3-d16 \
+            -Wl,--no-undefined -Wl,-z,relro -Wl,-z,now \
+            termux/armv7/pty-smoke.c -o dist/armv7-pty-smoke
+          chmod 0755 dist/armv7-pty-smoke
+          file dist/armv7-pty-smoke
+          readelf -h dist/armv7-pty-smoke | tee dist/elf-header.txt
+          readelf -d dist/armv7-pty-smoke | tee dist/dynamic-section.txt
+          grep -q "Class:.*ELF32" dist/elf-header.txt
+          grep -Eq "Machine:.*ARM" dist/elf-header.txt
+          grep -Eq "Version5 EABI" dist/elf-header.txt
+          grep -Eq "soft-float ABI" dist/elf-header.txt
+          if grep -Eqi "GLIBC_|ld-linux|libc\\.so\\.6" dist/dynamic-section.txt; then
+            echo "ERROR: glibc dependency detected in Android PTY probe" >&2
+            exit 1
+          fi
+          cp termux/test-pty-armv7.sh dist/
+          chmod 0755 dist/test-pty-armv7.sh
+          {
+            echo "## ARMv7 Bionic PTY probe"
+            echo "- Compiled against Android NDK 27.2.12479018 / API 29."
+            echo "- ELF32 ARM EABI5 and soft-float ABI verified."
+            echo "- Device execution is still required to prove forkpty, PTY I/O, resize, and child lifecycle on Redmi 9A."
+            echo "- This probe does not yet implement OpenCode's PTY adapter."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload device test bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: armv7-pty-bionic-probe
+          path: |
+            dist/armv7-pty-smoke
+            dist/test-pty-armv7.sh
+            dist/elf-header.txt
+            dist/dynamic-section.txt
+          if-no-files-found: error
+          retention-days: 14
