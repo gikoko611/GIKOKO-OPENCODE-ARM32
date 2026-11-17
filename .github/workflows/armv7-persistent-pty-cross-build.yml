@@ -18,7 +18,6 @@ jobs:
     env:
       ANDROID_API_LEVEL: "29"
       GHOSTTY_REVISION: ab0b9da9e88fcb4b0533a1854e84628f663930af
-      CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER: /usr/local/lib/android/sdk/ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi29-clang
     steps:
       - name: Checkout ARMv7 port
         uses: actions/checkout@v4
@@ -77,9 +76,10 @@ jobs:
         shell: bash
         env:
           GHOSTTY_SOURCE_DIR: ${{ github.workspace }}/ghostty
-          CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER: /usr/local/lib/android/sdk/ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi29-clang
         run: |
           set -euo pipefail
+          grep -n -A14 'let zig_target = match target.as_str()' packages/process-daemon/build.rs
+          grep -F '"armv7-linux-androideabi" => "arm-linux-androideabi",' packages/process-daemon/build.rs
           cargo build --locked --release --target armv7-linux-androideabi \
             --manifest-path packages/process-daemon/Cargo.toml
           BIN="target/armv7-linux-androideabi/release/opencode-pty"
