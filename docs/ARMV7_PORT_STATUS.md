@@ -123,3 +123,8 @@ PR: https://github.com/gikoko611/GIKOKO-OPENCODE-ARM32/pull/3
 OpenCode upstream already provides native Agent Skills support through its built-in `skill` tool and `SKILL.md` discovery. This ARMv7 repository is the Termux packaging/port layer rather than a separate OpenCode source tree; do not implement a parallel skill engine. Preserve the upstream implementation and all discovery, permissions, configured local/HTTP sources, and on-demand loading behavior.
 
 ARMv7-specific compatibility requirements and Redmi 9A release tests are documented in [ARMV7_SKILLS_SUPPORT.md](ARMV7_SKILLS_SUPPORT.md). **Status: upstream feature confirmed; ARMv7 runtime/device verification pending because the full ARMv7 CLI is not yet complete.**
+
+
+## OpenCode V2.3.0 full-CLI target audit (2026-11-17)
+
+A pinned-upstream source audit found that the V2.3.0 Bun and Node build target tables currently accept only ARM64/x64; the Node target resolver and persistent PTY resolver also reject Android/ARMv7. The current Termux packaging pipeline is explicitly AArch64 and cannot be reused for this target. The exact source findings and implementation gates are documented in [ARMV7_OPENCODE_V2_3_0_BUILD_GATE.md](ARMV7_OPENCODE_V2_3_0_BUILD_GATE.md). This is a blocking compatibility finding, not a completed CLI build. Do not package or publish an ARMv7 release until the target model, native assets, PTY contracts, Node bundle, and Redmi 9A acceptance tests are complete.
