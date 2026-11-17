@@ -1,0 +1,93 @@
+name: ARMv7 Node.js runtime preflight
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-termux-node-arm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download and inspect Termux ARM Node.js package
+        id: node
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, lzma, pathlib, re, urllib.request
+          base = "https://packages.termux.dev/apt/termux-main"
+          index_url = base + "/dists/stable/main/binary-arm/Packages.xz"
+          print("Fetching:", index_url)
+          with urllib.request.urlopen(index_url, timeout=60) as r:
+              raw = lzma.decompress(r.read()).decode()
+          entries = re.split(r"\n\n+", raw)
+          candidates = []
+          for entry in entries:
+              fields = dict(line.split(": ", 1) for line in entry.splitlines() if ": " in line)
+              if fields.get("Package") == "nodejs" and fields.get("Architecture") == "arm":
+                  candidates.append(fields)
+          if not candidates:
+              raise SystemExit("No Termux nodejs package for Architecture: arm found")
+          def version_key(v):
+              return tuple(int(x) if x.isdigit() else x for x in re.findall(r"\d+|[A-Za-z]+", v))
+          pkg = sorted(candidates, key=lambda x: version_key(x["Version"]))[-1]
+          print("Selected Node.js package:", pkg["Version"], pkg["Filename"])
+          if version_key(pkg["Version"]) < version_key("26.4.0"):
+              raise SystemExit("Termux ARM Node.js is older than OpenTUI's documented Node.js 26.4.0 minimum")
+          url = base + "/" + pkg["Filename"]
+          with urllib.request.urlopen(url, timeout=120) as r:
+              deb = r.read()
+          digest = hashlib.sha256(deb).hexdigest()
+          if digest.lower() != pkg["SHA256"].lower():
+              raise SystemExit("SHA256 mismatch for downloaded Termux Node.js package")
+          pathlib.Path("nodejs-arm.deb").write_bytes(deb)
+          pathlib.Path("node-version.txt").write_text(pkg["Version"])
+          print("SHA256 verified:", digest)
+          PY
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq dpkg-dev binutils
+          mkdir -p node-root
+          dpkg-deb -x nodejs-arm.deb node-root
+          NODE="$(find node-root -path '*/bin/node' -type f -o -path '*/bin/node' -type l | head -n1)"
+          test -n "$NODE"
+          REAL_NODE="$(readlink -f "$NODE")"
+          echo "Node path: $NODE"
+          echo "Resolved path: $REAL_NODE"
+          readelf -h "$REAL_NODE" | tee node-elf-header.txt
+          python3 - "$REAL_NODE" <<'PYELF'
+          import struct, sys
+          h = open(sys.argv[1], "rb").read(52)
+          assert h[:4] == b"\x7fELF", "Node executable is not ELF"
+          assert h[4] == 1, "Node executable is not ELF32"
+          assert h[5] == 1, "Node executable is not little-endian"
+          machine = struct.unpack_from("<H", h, 18)[0]
+          flags = struct.unpack_from("<I", h, 36)[0]
+          assert machine == 40, f"Expected ARM e_machine=40, got {machine}"
+          assert flags & 0xFF000000 == 0x05000000, f"Expected ARM EABI5, got e_flags=0x{flags:08x}"
+          print(f"PASS: ELF32 ARM EABI5 (e_machine={machine}, e_flags=0x{flags:08x})")
+          PYELF
+          echo "version=$(cat node-version.txt)" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Termux ARM Node.js preflight"
+            echo "- Package version: $(cat node-version.txt)"
+            echo "- Package architecture: arm"
+            echo "- Executable: ELF32, little-endian ARM, EABI5"
+            echo "- SHA256: verified against Termux package index"
+            echo ""
+            echo "This is static package inspection only. It does not execute Node.js or prove OpenCode/OpenTUI/PTY compatibility on Android."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload inspected package for reproducible review
+        uses: actions/upload-artifact@v4
+        with:
+          name: termux-nodejs-arm-preflight
+          path: |
+            nodejs-arm.deb
+            node-elf-header.txt
+            node-version.txt
+          retention-days: 7
