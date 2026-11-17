@@ -77,20 +77,20 @@ jobs:
           replacements = {
               '    miniaudio_translate.addIncludePath(b.path("src"));':
                   '    if (b.graph.environ_map.get("ANDROID_SYSROOT")) |sysroot| {\n'
-                  '        miniaudio_translate.addIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/include/arm-linux-androideabi" }) });\n'
-                  '        miniaudio_translate.addIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/include" }) });\n'
+                  '        miniaudio_translate.addSystemIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/include/arm-linux-androideabi" }) });\n'
+                  '        miniaudio_translate.addSystemIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/include" }) });\n'
                   '    }\n'
                   '    miniaudio_translate.addIncludePath(b.path("src"));',
               '    yoga_translate.addIncludePath(yoga_dep.path(""));':
                   '    if (b.graph.environ_map.get("ANDROID_SYSROOT")) |sysroot| {\n'
-                  '        yoga_translate.addIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/include/arm-linux-androideabi" }) });\n'
-                  '        yoga_translate.addIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/include" }) });\n'
+                  '        yoga_translate.addSystemIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/include/arm-linux-androideabi" }) });\n'
+                  '        yoga_translate.addSystemIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/include" }) });\n'
                   '    }\n'
                   '    yoga_translate.addIncludePath(yoga_dep.path(""));',
               '    module.addImport("context_abi_c", header.createModule());':
                   '    if (b.graph.environ_map.get("ANDROID_SYSROOT")) |sysroot| {\n'
-                  '        header.addIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/include/arm-linux-androideabi" }) });\n'
-                  '        header.addIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/include" }) });\n'
+                  '        header.addSystemIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/include/arm-linux-androideabi" }) });\n'
+                  '        header.addSystemIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/include" }) });\n'
                   '    }\n'
                   '    module.addImport("context_abi_c", header.createModule());'
           }
@@ -101,7 +101,7 @@ jobs:
               source = source.replace(old, new, 1)
 
           path.write_text(source)
-          print("Patched all three OpenTUI translate-c modules with Android NDK headers.")
+          print("Patched all three translate-c modules with Android NDK SYSTEM include paths.")
           PY
           grep -n -A5 -B2 'ANDROID_SYSROOT' build.zig
 
@@ -118,8 +118,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Zig translate-c otherwise discovers the Ubuntu runner's glibc headers
-          # before the Android Bionic headers for this custom Android target.
           export CPATH="$ANDROID_SYSROOT/usr/include/arm-linux-androideabi:$ANDROID_SYSROOT/usr/include"
           export C_INCLUDE_PATH="$CPATH"
           export CPLUS_INCLUDE_PATH="$CPATH"
