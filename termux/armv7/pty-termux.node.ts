@@ -24,7 +24,7 @@ function spawnPty(file: string, args: string[], opts: Opts): Proc {
   const env = Object.fromEntries(
     Object.entries(opts.env ?? process.env).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
   )
-  if (!env.TERM) env.TERM = "xterm-256color"
+  if (!env.TERM) env.TERM = opts.name || "xterm-256color"
   const child = native.spawn(file, args, opts.rows ?? 24, opts.cols ?? 80, opts.cwd ?? process.cwd(), env)
   const output = createReadStream(null, { fd: child.fd, autoClose: false, encoding: "utf8" })
   const input = createWriteStream(null, { fd: child.fd, autoClose: false })
