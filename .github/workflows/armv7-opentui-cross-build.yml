@@ -386,6 +386,56 @@ jobs:
           p.write_text(s)
           print("Applied ARMv7 ABI-size, checked scene-record arithmetic, C atomic shim, and NDK libc++ patches.")
           PY
+      - name: Patch clipboard worker completion for Android Bionic
+        working-directory: opentui/packages/native
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/clipboard/host.zig")
+          source = path.read_text()
+
+          replacements = [
+              (
+                  "    thread: ?std.Thread = null,\n",
+                  "    thread: ?std.Thread = null,\n    worker_finished: std.atomic.Value(bool) = .init(false),\n",
+              ),
+              (
+                  "fn tryJoinThread(thread: std.Thread) bool {\n    return switch (builtin.os.tag) {",
+                  """fn tryJoinThread(thread: std.Thread, worker_finished: *const std.atomic.Value(bool)) bool {
+              // Bionic does not provide GNU pthread_tryjoin_np (or pthread_timedjoin_np).
+              // The worker publishes completion with release semantics; only then is
+              // a blocking join safe and guaranteed not to stall the polling thread.
+              if (comptime builtin.abi == .android) {
+                  if (!worker_finished.load(.acquire)) return false;
+                  thread.join();
+                  return true;
+              }
+              return switch (builtin.os.tag) {""",
+              ),
+              (
+                  "    fn waylandBmpWorker(operation: *Operation) void {\n",
+                  "    fn waylandBmpWorker(operation: *Operation) void {\n        defer operation.worker_finished.store(true, .release);\n",
+              ),
+              (
+                  "        if (!tryJoinThread(thread)) return false;\n",
+                  "        if (!tryJoinThread(thread, &operation.worker_finished)) return false;\n",
+              ),
+          ]
+
+          for old, new in replacements:
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f"host.zig patch expected exactly one match, found {count}: {old[:100]!r}")
+              source = source.replace(old, new, 1)
+
+          path.write_text(source)
+          print("Patched Android clipboard worker completion using an atomic completion flag and safe join.")
+          PY
+          grep -n -A12 'fn tryJoinThread' src/clipboard/host.zig
+          grep -n -A3 'fn waylandBmpWorker' src/clipboard/host.zig
       - name: Cross-compile with Android Bionic sysroot
         working-directory: opentui/packages/native
         shell: bash
@@ -427,6 +477,11 @@ jobs:
             }
           done
           readelf --dyn-syms --wide "$LIB" > "$GITHUB_WORKSPACE/opentui-dynamic-symbols.txt"
+          if grep -Eq 'UND.*pthread_tryjoin_np|pthread_tryjoin_np.*UND' "$GITHUB_WORKSPACE/opentui-dynamic-symbols.txt"; then
+            echo "ERROR: GNU pthread_tryjoin_np is not available on Android Bionic" >&2
+            grep -n 'pthread_tryjoin_np' "$GITHUB_WORKSPACE/opentui-dynamic-symbols.txt" >&2
+            exit 1
+          fi
           nm -D --defined-only "$LIB" | awk '$3 ~ /^ot/ { print }' > "$GITHUB_WORKSPACE/opentui-exported-ot-symbols.txt"
           test -s "$GITHUB_WORKSPACE/opentui-exported-ot-symbols.txt"
           grep -Eq "[[:space:]]ot_context_abi_version$" "$GITHUB_WORKSPACE/opentui-exported-ot-symbols.txt" || {
