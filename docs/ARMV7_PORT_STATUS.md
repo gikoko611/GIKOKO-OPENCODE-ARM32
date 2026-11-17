@@ -27,7 +27,7 @@ Do not switch the release pipeline to Node.js or mark the port ready until every
 
 ## Feature-preservation policy
 
-The port must retain upstream OpenCode source and its agent/provider/tool/session behavior. Platform work should be isolated to the runtime, native TUI, PTY, packaging, and launch integration. Do not remove MCP, LSP, provider integrations, tools, permissions, sessions, or web UI just to make a build pass.
+The upstream 2.3.0 source includes Node-specific branches for SQLite, PTY, filesystem search, TLS, and TUI helpers. The Node route is now the preferred investigation path; see [Node compatibility audit](ARMV7_NODE_COMPATIBILITY_AUDIT.md). The port must retain upstream OpenCode source and its agent/provider/tool/session behavior. Platform work should be isolated to the runtime, native TUI, PTY, packaging, and launch integration. Do not remove MCP, LSP, provider integrations, tools, permissions, sessions, or web UI just to make a build pass.
 
 If a native dependency has no ARMv7 implementation, report it as blocked or implement a tested fallback. Never silently omit the feature.
 
