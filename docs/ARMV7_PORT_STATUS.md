@@ -19,6 +19,12 @@ The current build pipeline is an AArch64/Bionic pipeline copied from the upstrea
 
 Changing architecture strings, Debian package metadata, or runner labels alone would produce a broken package. The release workflow must remain AArch64-only until every required runtime/native component has an actual ARMv7 build and passes device tests.
 
+## Alternative runtime investigation
+
+A Node.js-based route is now being evaluated because OpenTUI documents Node.js 26.4.0+ with ESM and `--experimental-ffi`, and Termux publishes a 32-bit `arm` Node.js package. This does not establish OpenCode compatibility: OpenCode's Bun-specific APIs/build pipeline, an Android ARMv7 OpenTUI Zig renderer, and a PTY backend still require implementation and on-device tests. See [ARMv7 Node.js runtime investigation](ARMV7_NODE_RUNTIME_PATH.md).
+
+Do not switch the release pipeline to Node.js or mark the port ready until every proof gate in that investigation passes.
+
 ## Feature-preservation policy
 
 The port must retain upstream OpenCode source and its agent/provider/tool/session behavior. Platform work should be isolated to the runtime, native TUI, PTY, packaging, and launch integration. Do not remove MCP, LSP, provider integrations, tools, permissions, sessions, or web UI just to make a build pass.
