@@ -6,7 +6,6 @@ on:
     paths:
       - ".github/workflows/armv7-node-cli-integration.yml"
       - "termux/ci/build-armv7-node-cli.py"
-      - "termux/ci/patch-opentui-node-runtime.py"
       - "termux/armv7/**"
   workflow_dispatch:
 
@@ -39,8 +38,6 @@ jobs:
       - name: Install workspace dependencies
         working-directory: upstream
         run: bun install --frozen-lockfile
-      - name: Patch OpenTUI Android native library override
-        run: python3 termux/ci/patch-opentui-node-runtime.py upstream
       - name: Build and smoke-test Android ARMv7 Node ESM bundle
         working-directory: upstream/packages/cli
         env:
