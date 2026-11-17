@@ -16,7 +16,6 @@ on:
       - "termux/test-opentui-armv7.sh"
       - "termux/test-pty-api-armv7.sh"
   pull_request:
-    branches: [main]
     paths:
       - ".github/workflows/armv7-opentui-cross-build.yml"
       - "termux/armv7/pty-api-smoke.c"
