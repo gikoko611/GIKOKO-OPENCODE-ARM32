@@ -41,3 +41,8 @@ Keep upstream OpenCode agents, providers, tools, sessions, MCP, LSP, permissions
 - [ ] Feature-parity review against pinned upstream OpenCode.
 
 Do not publish a placeholder or AArch64 binary under an ARM32 release name.
+
+
+## Second OpenTUI cross-build attempt
+
+The experiment workflow now installs Android NDK 27.2.12479018 and passes a Zig `--libc` configuration targeting the Android API 29 Bionic sysroot. This directly addresses the host-glibc header leak seen in run `44004450442`. The next CI result is pending; no ARMv7 library is claimed until ELF and linkage checks pass.
