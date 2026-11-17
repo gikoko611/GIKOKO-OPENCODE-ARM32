@@ -15,7 +15,15 @@ const api = require(addonPath)
 for (const name of ["spawn", "resize", "signal", "wait", "close"]) {
   assert.equal(typeof api[name], "function", `missing N-API method: ${name}`)
 }
-const child = api.spawn("/system/bin/sh", ["-c", "printf 'NAPI_PTY_READY\\n'; IFS= read -r input; printf 'NAPI_INPUT:%s\\n' \"$input\"; stty size; exit 9"], 24, 80)
+const cwd = process.cwd()
+const child = api.spawn(
+  "/system/bin/sh",
+  ["-c", "printf 'NAPI_PTY_READY\\n'; printf 'NAPI_ENV:%s\\n' \"$GIKOKO_PTY_TEST\"; printf 'NAPI_CWD:'; pwd; IFS= read -r input; printf 'NAPI_INPUT:%s\\n' \"$input\"; stty size; exit 9"],
+  24,
+  80,
+  cwd,
+  { TERM: "xterm-256color", GIKOKO_PTY_TEST: "enabled" },
+)
 assert.ok(child.pid > 1 && child.fd >= 0, "spawn must return child pid and PTY master fd")
 let output = ""
 const stream = createReadStream(null, { fd: child.fd, autoClose: false })
@@ -42,6 +50,8 @@ api.close(child.fd)
 assert.equal(exit.exitCode, 9, `unexpected child exit: ${JSON.stringify(exit)}`)
 assert.match(output, /NAPI_PTY_READY/)
 assert.match(output, /NAPI_INPUT:TERMUX_NAPI_ARMV7/)
+assert.match(output, /NAPI_ENV:enabled/)
+assert.ok(output.includes(`NAPI_CWD:${cwd}`), `cwd was not applied: ${JSON.stringify(output)}`)
 assert.match(output, /40 100/)
 console.log("PASS: Node-API addon loaded on Android ARMv7")
 console.log("PASS: forkpty spawned /system/bin/sh with a controlling terminal")
