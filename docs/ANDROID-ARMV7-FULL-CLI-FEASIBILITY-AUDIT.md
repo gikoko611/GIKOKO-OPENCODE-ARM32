@@ -2,40 +2,53 @@
 
 Date: 2026-11-17
 
-This audit records upstream runtime constraints discovered while continuing the Redmi 9A / Termux ARMv7 port. It intentionally distinguishes cross-compiled probes from a runnable OpenCode CLI.
+This audit tracks the Redmi 9A / Termux ARMv7 port and separates successful cross-compilation from a runnable, feature-complete CLI.
 
-## Confirmed upstream build architecture
+## Build architecture
 
-- OpenCode v2.3.0's `packages/cli/script/build.ts` produces a Bun-compiled executable, not a Node.js application bundle.
-- Its target table contains Linux/macOS/Windows ARM64 and x64 variants only. The target type is restricted to `arm64 | x64`.
-- The build resolves platform-specific `@opencode/pty` daemon packages and `@parcel/watcher` packages for the listed targets. Android ARMv7 has no declared target.
-- Core also depends on `@ff-labs/fff-bun` / `@ff-labs/fff-node`, `@silvia-odwyer/photon-node`, `bun-pty`, and `@lydell/node-pty`. Each must be audited for the selected runtime and ABI; compiling the CLI alone is insufficient.
+- The standard `packages/cli/script/build.ts` path produces a Bun-compiled executable. Its official target matrix does not include Android ARMv7.
+- Upstream also has `packages/cli/script/build-node.ts`, which produces a Node.js ESM bundle and optionally a Node SEA executable. This is the more promising route for Termux because the device already supplies Node.js.
+- However, `packages/cli/src/node/target.ts` still restricts targets to `darwin | linux | win32` and `arm64 | x64`. The Node asset collector requires platform-specific node-pty, Parcel watcher, FFF binary, FFF FFI, Photon WASM, app assets, and optional persistent-PTY assets. Android ARMv7 must be added as a real target and each required asset must be supplied or safely adapted; merely running the x64 `--bundle-only` baseline is not an ARMv7 build.
+- Core features such as Skills, MCP, Plugins, LSP, Providers, Agents, and Sessions are largely in the CLI/server module graph. They should remain in the Node bundle, but feature parity also depends on the runtime and native adapters below.
 
-## Persistent PTY daemon is a separate native program
+## Native component CI results (2026-11-17)
 
-The core persistent-PTY binding imports `binaryPath` from `@opencode/pty`. The CLI build embeds a separate `opencode-pty` executable resolved by `packages/cli/script/opencode-pty.ts`.
+The following GitHub Actions jobs completed successfully on the current ARMv7 branch:
 
-In v2.3.0 its source is `packages/process-daemon`, a Rust crate using `portable-pty`, Unix `libc` / `nix`, and a directly linked Ghostty VT implementation. The crate's README documents generated FFI layout assertions for supported 64-bit platforms. Therefore, simply adding an Android ARMv7 target to the npm package resolver or compiling the Rust crate is not a valid port. The 32-bit ABI, Ghostty C layout/bindings, Zig build, PTY transport, and runtime behavior all need explicit engineering and tests.
+| Component | Result | What is proven | What is not yet proven |
+|---|---|---|---|
+| OpenTUI | Success | Android ARMv7 native build/test artifact produced | Full CLI renderer startup on the Redmi 9A |
+| Ghostty lib-vt | Success | ARMv7 library probe artifact produced | Integration with the Rust daemon and terminal rendering on-device |
+| Parcel watcher | Success | Android ARMv7 Node-API addon cross-compiled | Recursive watcher event semantics on-device |
+| Persistent PTY | Success | Protocol-8 daemon ELF32/ARM candidate cross-compiled | Protocol-8 runtime, process lifecycle, and terminal behavior on-device |
+| Node ESM baseline | Success (x64 host only) | Upstream Node bundle build path and CLI smoke test on x64 | Android ARMv7 bundle or execution |
 
-The Node-API forkpty addon in this repository is the ordinary PTY adapter groundwork. It is not a replacement for the protocol-8 persistent daemon and must not be represented as one.
+Run evidence:
+- OpenTUI/native test bundle: https://github.com/gikoko611/GIKOKO-OPENCODE-ARM32/actions/runs/44075779712
+- Persistent PTY candidate: https://github.com/gikoko611/GIKOKO-OPENCODE-ARM32/actions/runs/44075790548
+- Ghostty ARMv7 probe: https://github.com/gikoko611/GIKOKO-OPENCODE-ARM32/actions/runs/44075786786
+- Parcel watcher candidate: https://github.com/gikoko611/GIKOKO-OPENCODE-ARM32/actions/runs/44075783172
 
-## Filesystem watcher behavior
+These are candidate artifacts, not an installable OpenCode release.
 
-Upstream `packages/core/src/filesystem/watcher.ts` uses Node's `fs.watch` for individual files and immediate directory entries, but delegates recursive directory subscriptions to `@parcel/watcher`. The package resolver in the CLI build expects a platform-specific Parcel native package. No Android ARMv7 package is declared.
+## Persistent PTY daemon
 
-A valid Android backend must preserve recursive create/update/delete delivery, ignore rules, subscription cancellation, and behavior when directories disappear. Disabling the watcher or silently returning an empty stream would regress file watching and project refresh behavior.
+The persistent-PTY binding imports `binaryPath` from `@opencode/pty`. Its daemon is a separate Rust program in `packages/process-daemon`, using `portable-pty`, Unix `libc` / `nix`, and Ghostty VT. The ARMv7 cross-build now succeeds, but ABI correctness and runtime behavior still require device tests.
 
-## Build/runtime gate
+The Node-API forkpty adapter is a separate ordinary-PTY experiment. It must not be presented as a replacement for the protocol-8 persistent daemon.
 
-The native test bundle workflow currently proves Android Bionic/ARMv7 compilation and source-level adapter integration. It does not prove that the OpenCode v2.3.0 CLI can execute on Android, because the upstream CLI is compiled by Bun and the official target matrix does not include Android ARMv7.
+## Filesystem watcher
 
-Before a full installer can be called complete, the project needs:
-1. A supported ARMv7 Android execution runtime for the Bun APIs used by the CLI, or a genuine Node-compatible port of all Bun-specific build/runtime behavior.
-2. A tested protocol-8 persistent PTY daemon strategy (including Ghostty/32-bit feasibility).
-3. A recursive Android filesystem watcher preserving upstream semantics.
-4. ARMv7 Android builds or safe compatible replacements for every remaining native dependency.
-5. End-to-end Redmi 9A tests for CLI startup, sessions, tools, MCP, LSP, plugins, skills, terminal operations, and file watching.
+Upstream uses Node's `fs.watch` for individual files and immediate directory entries, but delegates recursive directory subscriptions to `@parcel/watcher`. The Android ARMv7 addon now cross-compiles. Device tests must still verify recursive create/update/delete events, ignore rules, cancellation, and deleted-directory behavior.
 
-## Status
+## Remaining integration gates
 
-The existing native probes and Node-API PTY adapter are useful prerequisites, not a complete OpenCode CLI. Do not label the current native test bundle as the final installer and do not claim upstream feature parity until the gates above pass.
+1. Extend the upstream Node target descriptor and Node asset collector for Android ARMv7 / Bionic.
+2. Supply and verify the ARMv7 OpenTUI library, Parcel watcher addon, PTY daemon, and Node-PTY adapter/launcher integration.
+3. Resolve FFF binary and FFF FFI behavior without silently removing file-search functionality; verify Photon WASM and all runtime assets.
+4. Build the complete Node ESM CLI bundle and run `--version`, `--help`, startup, and feature smoke tests under Android ARMv7 Node.
+5. Test on the actual Redmi 9A: terminal input/output/resize, persistent sessions, recursive watching, Skills, MCP, Plugins, LSP, Providers, Agents, and Sessions.
+
+## Release decision
+
+Do not call the current native test bundle a final installer. Do not claim full feature parity or publish a release until the Android ARMv7 Node bundle and the on-device runtime gates above pass.
