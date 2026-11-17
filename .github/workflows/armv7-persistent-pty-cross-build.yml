@@ -77,7 +77,6 @@ jobs:
         shell: bash
         env:
           GHOSTTY_SOURCE_DIR: ${{ github.workspace }}/ghostty
-          OPENCODE_ZIG_CPU: baseline+soft_float
           CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER: /usr/local/lib/android/sdk/ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi29-clang
         run: |
           set -euo pipefail
@@ -95,6 +94,7 @@ jobs:
             echo "- OpenCode: v2.3.0"
             echo "- Ghostty: $GHOSTTY_REVISION"
             echo "- Rust target: armv7-linux-androideabi"
+            echo "- Zig target ABI: arm-linux-androideabi (softfp)"
             echo "- Android NDK API: 29"
             echo "- ELF32 ARM daemon compiled. Device protocol tests remain required."
           } >> "$GITHUB_STEP_SUMMARY"
