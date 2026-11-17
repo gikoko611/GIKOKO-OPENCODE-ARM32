@@ -626,6 +626,11 @@ jobs:
             echo "- This is a native PTY adapter probe, not yet the complete upstream node-pty/persistent PTY integration."
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Set up Bun for adapter source validation
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+
       - name: Verify upstream Node PTY adapter integration
         shell: bash
         run: |
@@ -634,7 +639,9 @@ jobs:
           bash "$GITHUB_WORKSPACE/termux/ci/apply-armv7-pty-adapter.sh" "$RUNNER_TEMP/opencode-pty-check"
           grep -q 'process.platform === "android" && process.arch === "arm"' "$RUNNER_TEMP/opencode-pty-check/packages/core/src/pty/pty.node.ts"
           grep -q 'native.spawn(file, args' "$RUNNER_TEMP/opencode-pty-check/packages/core/src/pty/pty.termux.node.ts"
-          echo "Verified adapter is applied to pinned OpenCode v2.3.0 source."
+          bun build "$RUNNER_TEMP/opencode-pty-check/packages/core/src/pty/pty.node.ts" --target=node --external @lydell/node-pty --outdir "$RUNNER_TEMP/pty-adapter-build"
+          test -s "$RUNNER_TEMP/pty-adapter-build/pty.node.js"
+          echo "Verified adapter applies and bundles against pinned OpenCode v2.3.0 source."
           echo "- Android ARMv7 Node PTY adapter is wired to the upstream Node PTY entrypoint." >> "$GITHUB_STEP_SUMMARY"
           echo "- Native addon device execution and persistent daemon integration remain separate validation tasks." >> "$GITHUB_STEP_SUMMARY"
 
