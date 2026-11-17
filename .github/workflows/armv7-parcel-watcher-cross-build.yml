@@ -64,8 +64,8 @@ jobs:
           "$CXX" \
             --target=armv7a-linux-androideabi29 \
             --sysroot="$NDK/toolchains/llvm/prebuilt/linux-x86_64/sysroot" \
-            -std=c++17 -O2 -fPIC -shared -fno-exceptions \
-            -DNAPI_VERSION=3 -DNAPI_DISABLE_CPP_EXCEPTIONS \
+            -std=c++17 -O2 -fPIC -shared -fexceptions \
+            -DNAPI_VERSION=8 \
             -DNODE_GYP_MODULE_NAME=watcher -D_GNU_SOURCE \
             -DWATCHMAN -DINOTIFY -DBRUTE_FORCE \
             -I"$NODE" -I"$NAPI" -I"$SRC/src" \
@@ -84,13 +84,16 @@ jobs:
           readelf -h "$OUT/watcher.node" | grep -E 'Class:.*ELF32'
           readelf -h "$OUT/watcher.node" | grep -E 'Machine:.*ARM'
           readelf -d "$OUT/watcher.node" | tee "$OUT/dynamic.txt"
+          if grep -q "libc++_shared.so" "$OUT/dynamic.txt"; then
+            cp "$NDK/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/arm-linux-androideabi/libc++_shared.so" "$OUT/"
+          fi
           ! grep -E 'libc\.so\.6|libstdc\+\+\.so\.6|ld-linux' "$OUT/dynamic.txt"
           file "$OUT/watcher.node"
-          sha256sum "$OUT/watcher.node" > "$OUT/SHA256SUMS"
+          sha256sum "$OUT"/* > "$OUT/SHA256SUMS"
           {
             echo "## Parcel watcher Android ARMv7"
             echo "- Source: @parcel/watcher $PARCEL_WATCHER_VERSION"
-            echo "- Runtime ABI: Node-API 3"
+            echo "- Runtime ABI: Node-API 8"
             echo "- Target: Android ARMv7 / Bionic / API 29"
             echo "- Backend: inotify + recursive directory backend"
             echo "- ELF32 ARM cross-compile succeeded; on-device event tests remain required."
