@@ -46,9 +46,9 @@ A successful OpenTUI native library build is not a successful OpenCode port. Do 
 - Artifact: [opentui-android-armv7-experiment](https://github.com/gikoko611/GIKOKO-OPENCODE-ARM32/actions/runs/44029335974/artifacts/14304174110), artifact ID `14304174110`, 7,945,611 bytes, retained until 2026-12-01.
 - The artifact contains `libopentui-android-armv7.so`, `libnode-ffi-smoke.so`, `node-ffi-smoke.mjs`, and `test-node-ffi-armv7.sh`, plus ELF/dynamic-symbol evidence.
 - Direct artifact inspection confirmed both native libraries are ELF32 little-endian ARM EABI5 with soft-float ABI. The OpenTUI library is Android API 29 and its dynamic dependencies are `libm.so`, `libc.so`, and `libdl.so`; the smoke library is Android API 29 and depends on `libdl.so` and `libc.so`.
-- **Not yet verified:** Node `node:ffi` execution, FFI marshalling, OpenTUI loading, terminal rendering, or any Redmi 9A device behavior. The smoke script must be run on the actual 32-bit Termux Node runtime.
+- **Device verified:** Node `node:ffi` execution and i32/u64/f64/pointer marshalling passed on the Redmi 9A using Node v26.4.0 (`process.arch=arm`, `process.platform=android`). OpenTUI library loading and terminal rendering remain unverified.
 
-The next gate is the on-device smoke test, followed by the separate PTY/native-dependency work. The full OpenCode CLI remains incomplete.
+The next gate is the OpenTUI-specific library load/ABI test in the same artifact (`bash test-opentui-armv7.sh`), followed by terminal rendering and the separate PTY/native-dependency work. The full OpenCode CLI remains incomplete.
 
 
 ## Redmi 9A device-side Node FFI result (2026-11-17)
@@ -82,7 +82,7 @@ Node: 26.4.0; arch: arm; platform: android
 
 This is the first direct device-side runtime proof for the Node FFI path: Node v26.4.0 on Android reports 32-bit ARM, loads an Android ARMv7 shared object through `node:ffi`, and successfully calls native functions with i32, u64, f64, and pointer arguments/returns. The experimental FFI warning is expected because Node marks this API experimental.
 
-**This does not yet prove OpenTUI's 20.5 MB native library can be loaded through OpenTUI's generated 366-symbol binding, nor that terminal rendering works.** The next gate is an OpenTUI-specific FFI integration test on the same device. Full OpenCode CLI, PTY, and other native dependencies remain outstanding.
+**This does not yet prove OpenTUI's 20.5 MB native library can be loaded through OpenTUI's generated 366-symbol binding, nor that terminal rendering works.** The current artifact already includes `node-opentui-load-smoke.mjs` and `test-opentui-armv7.sh` for the next device test. Full OpenCode CLI, PTY, and other native dependencies remain outstanding.
 
 
 ## Redmi 9A on-device Node FFI proof (2026-11-17)
