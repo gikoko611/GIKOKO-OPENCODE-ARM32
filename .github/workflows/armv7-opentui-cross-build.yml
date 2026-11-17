@@ -314,7 +314,7 @@ jobs:
           export C_INCLUDE_PATH="$CPATH"
           export CPLUS_INCLUDE_PATH="$CPATH"
           zig build --libc "$GITHUB_WORKSPACE/android-libc.txt" \
-            -Dlibrary-target=arm-linux-android.29 \
+            -Dlibrary-target=arm-linux-androideabi.29 \
             -Doptimize=ReleaseFast --summary all
 
       - name: Verify ELF32 ARM output and Android linkage
@@ -322,7 +322,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          OUT="lib/arm-linux-android.29"
+          OUT="lib/arm-linux-androideabi.29"
           test -d "$OUT"
           find "$OUT" -maxdepth 2 -type f -print
           LIB="$(find "$OUT" -type f -name 'libopentui.so' -print -quit)"
