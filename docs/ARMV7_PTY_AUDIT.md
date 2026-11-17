@@ -62,3 +62,28 @@ Android Bionic documents `forkpty` and `openpty` as available starting at API le
 A practical implementation candidate is a small Android/Bionic ARMv7 Node-API addon or a carefully scoped native helper using `openpty`/`forkpty`, `ioctl(TIOCSWINSZ)`, `read`/`write`, `waitpid`, and signal delivery. It must keep fork/exec handling safe in a multithreaded Node process, avoid blocking the JS event loop, and implement descriptor/child cleanup. Validate all of this on-device before replacing `@lydell/node-pty`.
 
 Bionic API reference: https://android.googlesource.com/platform/bionic/+/HEAD/docs/status.md (the PTY entry points are listed under API level 23).
+
+
+## Additional upstream persistent-PTY audit (OpenCode v2.3.0)
+
+OpenCode has two separate PTY integration layers that must both be handled:
+
+1. Interactive shell PTY: `packages/core/src/pty/pty.node.ts` loads `@lydell/node-pty` and exposes the `Proc` API.
+2. Persistent PTY service: `@opencode/pty` (workspace source at `packages/process-daemon`) ships the `opencode-pty` daemon executable and uses `portable-pty` plus Ghostty VT.
+
+The persistent daemon's npm package optional dependencies are only:
+- macOS ARM64/x64
+- Linux ARM64/x64 (glibc and musl)
+- Windows ARM64/x64
+
+The pinned CLI resolver in `packages/cli/script/opencode-pty.ts` explicitly returns no asset unless the platform is macOS/Linux/Windows and the architecture is ARM64/x64. Android ARMv7 is therefore excluded before any binary lookup. The package build script also maps only those listed target triples; its Ghostty Zig build target mapping does not include `armv7-linux-androideabi`.
+
+The daemon source is Rust (edition 2024, Rust 1.90) and depends on `portable-pty`, `nix`, and a pinned Ghostty VT static library built through Zig. A dedicated Android ARMv7 port is more than a simple Rust target flag: the build script's Ghostty target mapping, Bionic linkage, process/signal semantics, filesystem ownership/locking, and Unix socket behavior all need explicit validation. Do not assume a generic `cargo build --target armv7-linux-androideabi` is sufficient.
+
+### Updated PTY decision
+
+The Node FFI smoke test has passed on the Redmi 9A, but this does not change the PTY blocker. The next PTY implementation must support both:
+- `@lydell/node-pty`-compatible interactive process semantics; and
+- the separate `opencode-pty` persistent daemon protocol and lifecycle.
+
+Keep the two implementations independently testable. Do not replace either with pipe-based `child_process.spawn` and silently lose terminal semantics or persistent-session ownership/handoff.
