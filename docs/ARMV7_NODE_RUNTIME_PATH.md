@@ -36,6 +36,24 @@ This materially improves confidence in the Android/Bionic binary format and expo
 
 The workflow's ELF verification step has now been strengthened to enforce EABI5/soft-float, check the expected Bionic dependencies, reject glibc references, and archive dynamic symbols plus exported OpenTUI symbols for review.
 
+## Node FFI smoke-test handoff
+
+The cross-build workflow now also compiles a tiny ARMv7/Bionic shared library specifically for testing Node's experimental `node:ffi` API on the phone. The artifact includes:
+
+- `libnode-ffi-smoke.so` (ELF32 ARM EABI5, soft-float ABI)
+- `node-ffi-smoke.mjs`
+- `test-node-ffi-armv7.sh`
+
+The test checks Node `process.arch === "arm"`, Node >=26.4.0, and actual native calls for `i32`, `u64`, `f64`, and pointer arguments/returns. This is intentionally a **device-side test**: hosted x86_64 CI can compile and inspect the library but cannot claim the ARM Node FFI calls passed.
+
+On the Redmi 9A after downloading and extracting the Actions artifact into one folder, run:
+
+```sh
+bash test-node-ffi-armv7.sh
+```
+
+The Node FFI API is experimental and requires `--experimental-ffi`; official Node v26.4.0 documentation describes the `dlopen()` API and supported scalar/pointer types: https://nodejs.org/download/release/v26.4.0/docs/api/ffi.html
+
 ## Required proof before switching the build
 
 1. Obtain a Termux `arm` Node.js package at version 26.4.0 or newer.
