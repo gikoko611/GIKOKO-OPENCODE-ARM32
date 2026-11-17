@@ -115,3 +115,20 @@ A successful on-device result proves only that Bionic PTY allocation and termina
 window-size ioctls work through the installed ARMv7 Node FFI. The next implementation
 must still cover child creation, controlling-terminal/session setup, nonblocking
 I/O, resize propagation, signal/exit handling, and descriptor cleanup.
+
+
+## Node-API PTY implementation progress (2026-11-17)
+
+The Android NDK/API 29 workflow has now successfully compiled an ELF32 ARM EABI5 soft-float Node-API v8 addon against Node 26.4.0 headers. The addon currently exposes:
+
+- `spawn(file, args, rows, cols[, cwd, env])`: `forkpty` + `execvp`, with optional working-directory and environment overrides.
+- `resize(fd, rows, cols)`: `TIOCSWINSZ`.
+- `signal(pid, signal)`: child signal delivery.
+- `wait(pid)`: nonblocking `waitpid(WNOHANG)` status polling.
+- `close(fd)`: PTY master descriptor cleanup.
+
+The device smoke script now checks child output/input, terminal resizing, exit status, working-directory propagation, and environment propagation. These are still device-side checks: successful cross-compilation alone does not prove the addon loads or behaves correctly on the Redmi 9A.
+
+A first Node adapter for OpenCode's `Proc` interface has also been added at `termux/armv7/pty-termux.node.ts`. The build-tree integration script `termux/ci/apply-armv7-pty-adapter.sh` copies it into the pinned v2.3.0 source and routes Android/ARM Node PTY calls through it while leaving other platforms unchanged. CI now applies this adapter to a clean upstream v2.3.0 checkout and bundles the resulting Node entrypoint as a validation step.
+
+**Still not complete:** the adapter has not yet passed the new upstream bundle check or Redmi 9A runtime testing; the separate `opencode-pty` persistent daemon remains unported; the Android ARMv7 filesystem watcher and remaining native assets remain blockers. Do not label this a complete OpenCode CLI port or final installer until those items and end-to-end device tests pass.
