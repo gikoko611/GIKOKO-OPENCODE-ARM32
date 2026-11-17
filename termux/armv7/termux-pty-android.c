@@ -135,27 +135,64 @@ static napi_value spawn_pty(napi_env env, napi_callback_info info) {
   struct winsize ws = {0};
   ws.ws_row = (unsigned short)rows;
   ws.ws_col = (unsigned short)cols;
-  int master = -1;
-  pid_t pid = forkpty(&master, NULL, NULL, &ws);
-  if (pid < 0) {
+  int exec_error[2];
+  if (pipe(exec_error) != 0) {
     int saved = errno;
     free_strings(env_items, env_count); free_strings(child_argv, count + 1); free(cwd); free(file);
     return fail(env, strerror(saved));
   }
+  (void)fcntl(exec_error[1], F_SETFD, FD_CLOEXEC);
+
+  int master = -1;
+  pid_t pid = forkpty(&master, NULL, NULL, &ws);
+  if (pid < 0) {
+    int saved = errno;
+    close(exec_error[0]); close(exec_error[1]);
+    free_strings(env_items, env_count); free_strings(child_argv, count + 1); free(cwd); free(file);
+    return fail(env, strerror(saved));
+  }
   if (pid == 0) {
-    if (cwd && chdir(cwd) != 0) _exit(126);
-    for (uint32_t i = 0; i < env_count; i++) {
+    close(exec_error[0]);
+    int child_error = 0;
+    if (cwd && chdir(cwd) != 0) child_error = errno;
+    for (uint32_t i = 0; !child_error && i < env_count; i++) {
       char *separator = strchr(env_items[i], '=');
       if (separator) {
         *separator = '\0';
-        if (setenv(env_items[i], separator + 1, 1) != 0) _exit(126);
+        if (setenv(env_items[i], separator + 1, 1) != 0) child_error = errno;
       }
     }
-    execvp(file, child_argv);
+    if (!child_error) {
+      execvp(file, child_argv);
+      child_error = errno;
+    }
+    (void)write(exec_error[1], &child_error, sizeof(child_error));
     _exit(127);
   }
 
+  close(exec_error[1]);
+  int child_error = 0;
+  ssize_t error_bytes;
+  do {
+    error_bytes = read(exec_error[0], &child_error, sizeof(child_error));
+  } while (error_bytes < 0 && errno == EINTR);
+  close(exec_error[0]);
   free_strings(env_items, env_count); free_strings(child_argv, count + 1); free(cwd); free(file);
+  if (error_bytes > 0) {
+    int ignored;
+    while (waitpid(pid, &ignored, 0) < 0 && errno == EINTR) {}
+    close(master);
+    return fail(env, strerror(child_error));
+  }
+  if (error_bytes < 0) {
+    int saved = errno;
+    (void)kill(pid, SIGKILL);
+    int ignored;
+    while (waitpid(pid, &ignored, 0) < 0 && errno == EINTR) {}
+    close(master);
+    return fail(env, strerror(saved));
+  }
+
   int flags = fcntl(master, F_GETFL);
   if (flags >= 0) (void)fcntl(master, F_SETFL, flags | O_NONBLOCK);
   (void)fcntl(master, F_SETFD, FD_CLOEXEC);
@@ -196,7 +233,10 @@ static napi_value wait_child(napi_env env, napi_callback_info info) {
       !get_i32(env, argv[0], &pid) || pid <= 1)
     return fail(env, "wait(pid): invalid pid");
   int status = 0;
-  pid_t result = waitpid((pid_t)pid, &status, WNOHANG);
+  pid_t result;
+  do {
+    result = waitpid((pid_t)pid, &status, WNOHANG);
+  } while (result < 0 && errno == EINTR);
   if (result == 0) { napi_value null_value; napi_get_null(env, &null_value); return null_value; }
   if (result < 0) return fail(env, strerror(errno));
   napi_value object, value;
