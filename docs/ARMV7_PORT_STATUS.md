@@ -98,3 +98,8 @@ The user ran the shipped `test-node-ffi-armv7.sh` on the target Redmi 9A in Term
 This is direct device-side proof that the installed 32-bit Termux Node 26.4.0 runtime can load an Android ARMv7 shared library through experimental `node:ffi` and correctly marshal the tested scalar and pointer values. The ExperimentalWarning is expected and is not a test failure.
 
 The result does **not** yet prove that `libopentui-android-armv7.so` itself loads, that the TUI renders, or that OpenCode runs. The next validation is to load the actual OpenTUI library and call its no-argument `ot_context_abi_version()` export, then run Node child-process/signal/filesystem checks. PTY and remaining native modules are still blocking integration items.
+
+
+## Custom provider compatibility target (2026-11-17)
+
+The V2 custom-provider contract is documented in [ARMV7_CUSTOM_PROVIDER_COMPAT.md](ARMV7_CUSTOM_PROVIDER_COMPAT.md). The target preserves OpenCode's native `providers` configuration, OpenAI-compatible runtime package, credentials, model map, and multiple-provider behavior. Arbitrary custom endpoints do not automatically support dynamic model discovery; only providers/runtimes or plugins that implement discovery can offer it. No ARMv7 end-to-end provider request has been claimed yet.
