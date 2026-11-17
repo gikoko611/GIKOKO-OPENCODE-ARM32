@@ -41,3 +41,12 @@ A backend fallback must state its semantics and performance characteristics. In 
 FFmpeg is an external command-line runtime dependency, not one of OpenCode's Node native addons. The Redmi 9A Termux environment already provides it, so the final installer should detect and use `$PREFIX/bin/ffmpeg` (or the first `ffmpeg` found on `PATH`) rather than download or bundle a second FFmpeg binary. The installer should report a clear optional-dependency warning if it is absent; it must not fail the core OpenCode CLI install solely because FFmpeg is missing.
 
 The CI log warning about missing `x86_64-linux` / `x86_64-linux-musl` FFmpeg build assets belongs to upstream desktop Linux build targets. It is not evidence of an Android ARMv7 link failure and is not a reason to add an x86_64 FFmpeg artifact to the Termux package. Any OpenCode feature that invokes FFmpeg still needs a runtime smoke test against the Termux executable.
+
+
+## New native build paths added (2026-11-17)
+
+- **Ghostty lib-vt:** `.github/workflows/armv7-ghostty-android-probe.yml` builds the exact Ghostty revision pinned by OpenCode v2.3.0. Ghostty requires Zig **0.16.0**; using Zig 0.17.0 fails at Ghostty's own build-version check and was corrected. A successful archive build is necessary but not sufficient for the daemon.
+- **Persistent PTY:** `termux/ci/patch-process-daemon-armv7.sh` adds the Rust target mapping `armv7-linux-androideabi → arm-linux-android` and regenerates Ghostty Rust FFI declarations with the Android 32-bit clang target. `.github/workflows/armv7-persistent-pty-cross-build.yml` then attempts to cross-compile the upstream protocol-8 daemon. Its artifact is a candidate only; protocol behavior and Bionic runtime still require device validation.
+- **Recursive watcher:** `.github/workflows/armv7-parcel-watcher-cross-build.yml` cross-compiles the upstream Parcel Watcher 2.5.1 inotify backend as a Node-API 3 addon for Android ARMv7. The upstream binding.gyp explicitly includes an Android inotify backend. This build must still be wired into the OpenCode Node target/asset collector and tested for recursive create/update/delete, ignore patterns, cancellation, and missing-root recovery on-device.
+
+These workflows deliberately keep the final release gate closed. FFF/ffi-rs native assets, Node target and asset integration, the complete Node ESM bundle, and the final Termux launcher/package still require implementation and validation. A green native-library compile does not imply a green full CLI.
