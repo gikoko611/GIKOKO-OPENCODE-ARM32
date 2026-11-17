@@ -1,4 +1,4 @@
-import { createReadStream, writeSync } from "node:fs"
+import { createReadStream, createWriteStream } from "node:fs"
 import { createRequire } from "node:module"
 import { constants as osConstants } from "node:os"
 import type { Disp, Exit, Opts, Proc } from "./pty.js"
@@ -27,6 +27,7 @@ function spawnPty(file: string, args: string[], opts: Opts): Proc {
   if (!env.TERM) env.TERM = "xterm-256color"
   const child = native.spawn(file, args, opts.rows ?? 24, opts.cols ?? 80, opts.cwd ?? process.cwd(), env)
   const output = createReadStream(null, { fd: child.fd, autoClose: false, encoding: "utf8" })
+  const input = createWriteStream(null, { fd: child.fd, autoClose: false })
   const dataListeners = new Set<(data: string) => void>()
   const exitListeners = new Set<(event: Exit) => void>()
   let exited = false
@@ -37,6 +38,7 @@ function spawnPty(file: string, args: string[], opts: Opts): Proc {
     if (closed) return
     closed = true
     output.destroy()
+    input.destroy()
     try {
       native.close(child.fd)
     } catch {
@@ -47,6 +49,9 @@ function spawnPty(file: string, args: string[], opts: Opts): Proc {
   output.on("data", (chunk: string | Buffer) => {
     const data = typeof chunk === "string" ? chunk : chunk.toString("utf8")
     for (const listener of dataListeners) listener(data)
+  })
+  input.on("error", () => {
+    // The child may exit while a pending write is being flushed.
   })
   output.on("error", () => {
     // PTY masters may report EIO after the child closes the slave side.
@@ -89,7 +94,7 @@ function spawnPty(file: string, args: string[], opts: Opts): Proc {
     },
     write(data) {
       if (exited || closed) throw new Error("PTY process has exited")
-      writeSync(child.fd, data)
+      input.write(data)
     },
     resize(cols, rows) {
       if (exited || closed) return
