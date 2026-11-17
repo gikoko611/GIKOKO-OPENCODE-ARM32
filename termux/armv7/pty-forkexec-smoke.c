@@ -25,6 +25,7 @@ int main(void) {
     int child_done = 0;
     int saw_marker = 0;
     int saw_dimensions = 0;
+    int saw_input = 0;
     char output[8192];
     size_t used = 0;
     struct winsize ws = {.ws_row = 24, .ws_col = 80, .ws_xpixel = 0, .ws_ypixel = 0};
@@ -36,9 +37,28 @@ int main(void) {
     }
     if (pid == 0) {
         execl("/system/bin/sh", "sh", "-c",
-              "printf 'PTY_CHILD_OK\\n'; stty size; exit 7",
+              "printf 'PTY_CHILD_OK\\n'; IFS= read -r line; printf 'INPUT:%s\\n' \"$line\"; stty size; exit 7",
               (char *)NULL);
         _exit(127);
+    }
+
+    /* Exercise terminal resize and parent-to-child input, not output alone. */
+    ws.ws_row = 40;
+    ws.ws_col = 100;
+    if (ioctl(master, TIOCSWINSZ, &ws) != 0) {
+        perror("TIOCSWINSZ");
+        kill(pid, SIGKILL);
+        waitpid(pid, &status, 0);
+        close(master);
+        return 18;
+    }
+    static const char input[] = "TERMUX_ARMV7_OK\\n";
+    if (write(master, input, sizeof(input) - 1) != (ssize_t)(sizeof(input) - 1)) {
+        perror("write PTY master");
+        kill(pid, SIGKILL);
+        waitpid(pid, &status, 0);
+        close(master);
+        return 19;
     }
 
     /* poll() must remain authoritative: drain only currently available bytes. */
@@ -52,7 +72,7 @@ int main(void) {
     }
 
     long long deadline = now_ms() + 7000;
-    while (!child_done || !saw_marker || !saw_dimensions) {
+    while (!child_done || !saw_marker || !saw_dimensions || !saw_input) {
         long long remaining = deadline - now_ms();
         if (remaining <= 0) {
             fprintf(stderr, "PTY probe timeout; output=%.*s\\n", (int)used, output);
@@ -92,7 +112,8 @@ int main(void) {
                 return 13;
             }
             saw_marker = strstr(output, "PTY_CHILD_OK") != NULL;
-            saw_dimensions = strstr(output, "24 80") != NULL || strstr(output, "24  80") != NULL;
+            saw_dimensions = strstr(output, "40 100") != NULL || strstr(output, "40  100") != NULL;
+            saw_input = strstr(output, "INPUT:TERMUX_ARMV7_OK") != NULL;
         }
 
         if (!child_done) {
@@ -117,14 +138,15 @@ int main(void) {
         fprintf(stderr, "Unexpected child status: 0x%x\\n", status);
         return 15;
     }
-    if (!saw_marker || !saw_dimensions) {
+    if (!saw_marker || !saw_dimensions || !saw_input) {
         fprintf(stderr, "Missing expected PTY output: %.*s\\n", (int)used, output);
         return 16;
     }
 
     printf("PASS: forkpty created a controlling terminal and spawned /system/bin/sh\\n");
     printf("PASS: child terminal output streamed through the PTY master\\n");
-    printf("PASS: child observed terminal dimensions 24x80\\n");
+    printf("PASS: parent input reached child through PTY master\\n");
+    printf("PASS: child observed resized terminal dimensions 40x100\\n");
     printf("PASS: waitpid reported the expected child exit code 7\\n");
     return 0;
 }
