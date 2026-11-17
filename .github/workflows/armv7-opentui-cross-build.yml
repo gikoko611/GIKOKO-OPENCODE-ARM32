@@ -47,6 +47,7 @@ jobs:
           include_dir=$SYSROOT/usr/include
           sys_include_dir=$SYSROOT/usr/include/arm-linux-androideabi
           crt_dir=$SYSROOT/usr/lib/arm-linux-androideabi/29
+          cc_dir=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin
           static_crt_dir=
           msvc_lib_dir=
           kernel32_lib_dir=
