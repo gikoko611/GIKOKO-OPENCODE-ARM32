@@ -113,6 +113,185 @@ jobs:
           sh scripts/prepare-zig-deps.sh
           test -f zig-deps/.ready
 
+      - name: Patch OpenTUI for 32-bit ARM ABI and atomics
+        working-directory: opentui/packages/native
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          def patch(path, old, new):
+              p = Path(path)
+              s = p.read_text()
+              count = s.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one match, found {count}: {old[:100]!r}")
+              p.write_text(s.replace(old, new, 1))
+
+          Path("src/atomic64_android.c").write_text("""#include <stdint.h>
+
+/* ARMv7 does not expose lock-free 64-bit atomics to Zig's std.atomic API.
+ * Clang lowers these builtins to the Android ARMv7 atomic runtime sequence. */
+uint64_t ot_atomic_u64_load(const uint64_t *value) {
+    return __atomic_load_n(value, __ATOMIC_RELAXED);
+}
+
+uint64_t ot_atomic_u64_fetch_add(uint64_t *value, uint64_t amount) {
+    return __atomic_fetch_add(value, amount, __ATOMIC_RELAXED);
+}
+
+int ot_atomic_u64_compare_exchange(uint64_t *value, uint64_t *expected, uint64_t desired) {
+    return __atomic_compare_exchange_n(value, expected, desired, 0,
+                                       __ATOMIC_RELAXED, __ATOMIC_RELAXED);
+}
+""")
+          Path("src/atomic64.zig").write_text("""extern "c" fn ot_atomic_u64_load(value: *const u64) u64;
+          extern "c" fn ot_atomic_u64_fetch_add(value: *u64, amount: u64) u64;
+          extern "c" fn ot_atomic_u64_compare_exchange(value: *u64, expected: *u64, desired: u64) c_int;
+
+          pub fn load(value: *const u64) u64 {
+              return ot_atomic_u64_load(value);
+          }
+
+          pub fn fetchAdd(value: *u64, amount: u64) u64 {
+              return ot_atomic_u64_fetch_add(value, amount);
+          }
+
+          pub fn compareExchange(value: *u64, expected: *u64, desired: u64) bool {
+              return ot_atomic_u64_compare_exchange(value, expected, desired) != 0;
+          }
+          """)
+
+          patch("src/context-handles.zig",
+                'const std = @import("std");',
+                'const std = @import("std");\nconst atomic64 = @import("atomic64.zig");')
+          patch("src/context-handles.zig",
+                'var last_context_id: std.atomic.Value(u64) = .init(0);',
+                'var last_context_id: u64 = 0;')
+          patch("src/context-handles.zig",
+                '''        var id = last_context_id.load(.monotonic);
+                  while (true) {
+                      if (id == std.math.maxInt(u64)) return error.ContextLimit;
+                      if (last_context_id.cmpxchgWeak(id, id + 1, .monotonic, .monotonic)) |current| {
+                          id = current;
+                      } else break;
+                  }''',
+                '''        var id = atomic64.load(&last_context_id);
+                  while (true) {
+                      if (id == std.math.maxInt(u64)) return error.ContextLimit;
+                      var expected = id;
+                      if (atomic64.compareExchange(&last_context_id, &expected, id + 1)) break;
+                      id = expected;
+                  }''')
+
+          patch("src/utils.zig",
+                'const std = @import("std");',
+                'const std = @import("std");\nconst atomic64 = @import("atomic64.zig");')
+          patch("src/utils.zig",
+                'var paint_clock = std.atomic.Value(u64).init(0);',
+                'var paint_clock: u64 = 0;')
+          patch("src/utils.zig",
+                'return paint_clock.fetchAdd(1, .monotonic) + 1;',
+                'return atomic64.fetchAdd(&paint_clock, 1) + 1;')
+
+          p = Path("src/audio.zig")
+          s = p.read_text()
+          if 'const atomic64 = @import("atomic64.zig");' not in s:
+              s = s.replace('const std = @import("std");',
+                            'const std = @import("std");\nconst atomic64 = @import("atomic64.zig");', 1)
+          s, add_count = re.subn(
+              r'@atomicRmw\(u64, &([A-Za-z0-9_\.]+), \.Add, ([A-Za-z0-9_\.]+), \.monotonic\)',
+              r'atomic64.fetchAdd(&\1, \2)', s)
+          s, load_count = re.subn(
+              r'@atomicLoad\(u64, &([A-Za-z0-9_\.]+), \.monotonic\)',
+              r'atomic64.load(&\1)', s)
+          if add_count < 6 or load_count < 6:
+              raise SystemExit(f"audio.zig: unexpected u64 atomic counts add={add_count}, load={load_count}")
+          p.write_text(s)
+          print(f"Replaced audio u64 atomics: fetch-add={add_count}, load={load_count}")
+
+          patch("src/context-abi.zig",
+                '    if (@sizeOf(usize) != 8) @compileError("The OpenTUI C ABI requires a 64-bit target");\n',
+                '')
+          patch("src/scene-record.zig",
+                '    std.debug.assert(@sizeOf(usize) >= 8); // commandSize adds up to four u32 lengths.\n',
+                '')
+
+          p = Path("src/scene-record.zig")
+          s = p.read_text()
+          needle = '/// Unpadded byte count of a command record, after checking its fixed fields.\n'
+          helpers = '''fn checkedSizeAdd(a: usize, b: usize) !usize {
+              return std.math.add(usize, a, b) catch error.InvalidOptions;
+          }
+
+          fn checkedSizeMul(a: usize, b: usize) !usize {
+              return std.math.mul(usize, a, b) catch error.InvalidOptions;
+          }
+
+          '''
+          if s.count(needle) != 1:
+              raise SystemExit("scene-record.zig: commandSize insertion point mismatch")
+          s = s.replace(needle, helpers + needle, 1)
+          replacements = {
+              'return @sizeOf(c.ot_scene_record_draw) + @as(usize, draw.struct_size) + value.text_length + value.bottom_length;':
+                  'const fixed_size = try checkedSizeAdd(@sizeOf(c.ot_scene_record_draw), @as(usize, draw.struct_size));\n            const text_size = try checkedSizeAdd(fixed_size, @as(usize, value.text_length));\n            return try checkedSizeAdd(text_size, @as(usize, value.bottom_length));',
+              'return @sizeOf(c.ot_scene_record_grid) + (@as(usize, value.column_count) + value.row_count) * @sizeOf(i32);':
+                  'const entries = try checkedSizeAdd(@as(usize, value.column_count), @as(usize, value.row_count));\n            const payload = try checkedSizeMul(entries, @sizeOf(i32));\n            return try checkedSizeAdd(@sizeOf(c.ot_scene_record_grid), payload);',
+              'return @sizeOf(c.ot_scene_record_packed) + @as(usize, value.byte_count);':
+                  'return try checkedSizeAdd(@sizeOf(c.ot_scene_record_packed), @as(usize, value.byte_count));',
+              'return @sizeOf(c.ot_scene_record_supersample) + @as(usize, value.byte_count);':
+                  'return try checkedSizeAdd(@sizeOf(c.ot_scene_record_supersample), @as(usize, value.byte_count));',
+              'return @sizeOf(c.ot_scene_record_grayscale) + @as(usize, value.sample_count) * @sizeOf(f32);':
+                  'const payload = try checkedSizeMul(@as(usize, value.sample_count), @sizeOf(f32));\n            return try checkedSizeAdd(@sizeOf(c.ot_scene_record_grayscale), payload);',
+              'return @sizeOf(c.ot_scene_record_color_matrix) + @as(usize, value.mask_count) * @sizeOf(f32);':
+                  'const payload = try checkedSizeMul(@as(usize, value.mask_count), @sizeOf(f32));\n            return try checkedSizeAdd(@sizeOf(c.ot_scene_record_color_matrix), payload);',
+          }
+          for old, new in replacements.items():
+              if s.count(old) != 1:
+                  raise SystemExit(f"scene-record.zig: expected one expression: {old}")
+              s = s.replace(old, new, 1)
+          p.write_text(s)
+
+          # Use the NDK's prebuilt libc++ shared library. Zig 0.17's bundled
+          # libc++/libunwind sub-build injects an unsupported hard-float flag
+          # for Android ARMv7; the NDK runtime is already built for this ABI.
+          p = Path("build.zig")
+          s = p.read_text()
+          old = '''    module.link_libcpp = true;
+              module.addIncludePath(yoga_dep.path(""));'''
+          new = '''    const target = module.resolved_target.?.result;
+              if (target.os.tag == .android) {
+                  module.link_libcpp = false;
+                  if (b.graph.environ_map.get("ANDROID_SYSROOT")) |sysroot| {
+                      module.addSystemIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/include/c++/v1" }) });
+                  }
+                  if (b.graph.environ_map.get("ANDROID_CXX_LIB_DIR")) |lib_dir| {
+                      module.addLibraryPath(.{ .cwd_relative = lib_dir });
+                  }
+                  module.linkSystemLibrary("c++_shared", .{});
+              } else {
+                  module.link_libcpp = true;
+              }
+              module.addIncludePath(yoga_dep.path(""));'''
+          if s.count(old) != 1:
+              raise SystemExit("build.zig: Yoga libc++ patch point mismatch")
+          s = s.replace(old, new, 1)
+
+          old = '''    module.addOptions("build_options", build_options);
+              addTranslatedCImports(b, module, optimize, target);'''
+          new = '''    if (target.result.os.tag == .android and target.result.cpu.arch == .arm) {
+                  module.addCSourceFile(.{ .file = b.path("src/atomic64_android.c"), .flags = &.{"-std=c11"} });
+              }
+              module.addOptions("build_options", build_options);
+              addTranslatedCImports(b, module, optimize, target);'''
+          if s.count(old) != 1:
+              raise SystemExit("build.zig: applyDependencies patch point mismatch")
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          print("Applied ARMv7 ABI-size, checked scene-record arithmetic, C atomic shim, and NDK libc++ patches.")
+          PY
       - name: Cross-compile with Android Bionic sysroot
         working-directory: opentui/packages/native
         shell: bash
