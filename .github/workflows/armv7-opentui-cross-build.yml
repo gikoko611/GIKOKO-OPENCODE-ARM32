@@ -81,6 +81,26 @@ jobs:
           cat "$GITHUB_WORKSPACE/android-libc.txt"
           zig version
 
+      - name: Build Android ARMv7 Node FFI smoke library
+        shell: bash
+        run: |
+          set -euo pipefail
+          CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi29-clang"
+          test -x "$CC"
+          "$CC" -shared -fPIC -O2 -mfloat-abi=softfp -mfpu=vfpv3-d16 \
+            -Wl,--no-undefined -Wl,-soname,libnode-ffi-smoke.so \
+            "$GITHUB_WORKSPACE/termux/armv7/node-ffi-smoke.c" \
+            -o "$GITHUB_WORKSPACE/libnode-ffi-smoke.so"
+          file "$GITHUB_WORKSPACE/libnode-ffi-smoke.so"
+          readelf -h "$GITHUB_WORKSPACE/libnode-ffi-smoke.so" | tee "$GITHUB_WORKSPACE/node-ffi-smoke-elf.txt"
+          readelf -d "$GITHUB_WORKSPACE/libnode-ffi-smoke.so" | tee "$GITHUB_WORKSPACE/node-ffi-smoke-dynamic.txt"
+          grep -q 'Class:.*ELF32' "$GITHUB_WORKSPACE/node-ffi-smoke-elf.txt"
+          grep -Eq 'Machine:.*ARM' "$GITHUB_WORKSPACE/node-ffi-smoke-elf.txt"
+          grep -Eq 'Version5 EABI' "$GITHUB_WORKSPACE/node-ffi-smoke-elf.txt"
+          grep -Eq 'soft-float ABI' "$GITHUB_WORKSPACE/node-ffi-smoke-elf.txt"
+          cp "$GITHUB_WORKSPACE/termux/armv7/node-ffi-smoke.mjs" "$GITHUB_WORKSPACE/"
+          cp "$GITHUB_WORKSPACE/termux/test-node-ffi-armv7.sh" "$GITHUB_WORKSPACE/"
+
       - name: Fetch pinned OpenTUI source
         shell: bash
         run: |
@@ -420,6 +440,11 @@ jobs:
             opentui-dynamic-section.txt
             opentui-dynamic-symbols.txt
             opentui-exported-ot-symbols.txt
+            libnode-ffi-smoke.so
+            node-ffi-smoke.mjs
+            test-node-ffi-armv7.sh
+            node-ffi-smoke-elf.txt
+            node-ffi-smoke-dynamic.txt
             opentui-vendor-sha256.txt
             android-libc.txt
             libc++_shared-android-armv7.so
