@@ -36,7 +36,19 @@ PY
 
 export BINDGEN_EXTRA_CLANG_ARGS="--target=$CLANG_TARGET --sysroot=$NDK/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
 "$SCRIPT" "$ROOT/../ghostty"
-grep -q 'armv7-linux-androideabi.*arm-linux-androideabi' "$BUILD"
+# Fail early unless the exact Rust target maps to Zig's Android ARM softfp triple.
+python3 - "$BUILD" <<'PY'
+from pathlib import Path
+import sys
+s = Path(sys.argv[1]).read_text()
+start = s.index('let zig_target = match target.as_str()')
+end = s.index('\n        };', start)
+mapping = s[start:end]
+expected = '"armv7-linux-androideabi" => "arm-linux-androideabi",'
+if expected not in mapping:
+    raise SystemExit("Android ARMv7 Zig target mapping was not applied")
+print(mapping)
+PY
 grep -q 'Size of GhosttyString.*- 8usize' "$BINDINGS"
 grep -q 'Alignment of GhosttyString.*- 4usize' "$BINDINGS"
 echo "Patched process-daemon target to Zig androideabi softfp and regenerated 32-bit Android Ghostty bindings."
