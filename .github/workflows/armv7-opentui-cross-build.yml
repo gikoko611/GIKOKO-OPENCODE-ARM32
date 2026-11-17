@@ -8,6 +8,10 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/armv7-opentui-cross-build.yml"
+      - "termux/armv7/node-runtime-smoke.mjs"
+      - "termux/armv7/node-opentui-load-smoke.mjs"
+      - "termux/test-node-runtime-armv7.sh"
+      - "termux/test-opentui-armv7.sh"
 
 permissions:
   contents: read
@@ -100,8 +104,16 @@ jobs:
           grep -Eq 'soft-float ABI' "$GITHUB_WORKSPACE/node-ffi-smoke-elf.txt"
           cp "$GITHUB_WORKSPACE/termux/armv7/node-ffi-smoke.mjs" "$GITHUB_WORKSPACE/"
           cp "$GITHUB_WORKSPACE/termux/test-node-ffi-armv7.sh" "$GITHUB_WORKSPACE/"
+          cp "$GITHUB_WORKSPACE/termux/armv7/node-runtime-smoke.mjs" "$GITHUB_WORKSPACE/"
+          cp "$GITHUB_WORKSPACE/termux/armv7/node-opentui-load-smoke.mjs" "$GITHUB_WORKSPACE/"
+          cp "$GITHUB_WORKSPACE/termux/test-node-runtime-armv7.sh" "$GITHUB_WORKSPACE/"
+          cp "$GITHUB_WORKSPACE/termux/test-opentui-armv7.sh" "$GITHUB_WORKSPACE/"
           test -s "$GITHUB_WORKSPACE/node-ffi-smoke.mjs"
           test -s "$GITHUB_WORKSPACE/test-node-ffi-armv7.sh"
+          test -s "$GITHUB_WORKSPACE/node-runtime-smoke.mjs"
+          test -s "$GITHUB_WORKSPACE/node-opentui-load-smoke.mjs"
+          test -s "$GITHUB_WORKSPACE/test-node-runtime-armv7.sh"
+          test -s "$GITHUB_WORKSPACE/test-opentui-armv7.sh"
 
       - name: Fetch pinned OpenTUI source
         shell: bash
@@ -428,7 +440,8 @@ jobs:
             echo "- ELF32 / ARM / EABI5 / soft-float ABI verified."
             echo "- Dynamic dependencies verified: libc.so, libm.so, libdl.so only."
             echo "- Exported OpenTUI C symbols and dynamic symbol table captured as artifacts."
-            echo "- Node FFI calls and on-device terminal rendering remain unverified."
+            echo "- Dedicated Node FFI scalar/pointer smoke library is compiled for device-side runtime validation."
+            echo "- Actual OpenTUI FFI loading, terminal rendering, and full OpenCode runtime remain unverified."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload native build evidence
@@ -445,6 +458,10 @@ jobs:
             libnode-ffi-smoke.so
             node-ffi-smoke.mjs
             test-node-ffi-armv7.sh
+            node-runtime-smoke.mjs
+            node-opentui-load-smoke.mjs
+            test-node-runtime-armv7.sh
+            test-opentui-armv7.sh
             node-ffi-smoke-elf.txt
             node-ffi-smoke-dynamic.txt
             opentui-vendor-sha256.txt
