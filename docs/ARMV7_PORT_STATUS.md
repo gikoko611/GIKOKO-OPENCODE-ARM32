@@ -103,3 +103,16 @@ The result does **not** yet prove that `libopentui-android-armv7.so` itself load
 ## Custom provider compatibility target (2026-11-17)
 
 The V2 custom-provider contract is documented in [ARMV7_CUSTOM_PROVIDER_COMPAT.md](ARMV7_CUSTOM_PROVIDER_COMPAT.md). The target preserves OpenCode's native `providers` configuration, OpenAI-compatible runtime package, credentials, model map, and multiple-provider behavior. Arbitrary custom endpoints do not automatically support dynamic model discovery; only providers/runtimes or plugins that implement discovery can offer it. No ARMv7 end-to-end provider request has been claimed yet.
+
+
+## ARMv7 PTY primitive probe added (2026-11-17)
+
+A draft implementation PR adds a dedicated Android/Bionic ARMv7 probe that
+cross-compiles `openpty()` plus terminal window-size ioctls and exposes them
+through Node `node:ffi` for on-device execution. This is a feasibility gate,
+not a full PTY backend. It still requires CI compilation and Redmi 9A execution.
+Even if it passes, interactive child lifecycle, controlling-terminal setup,
+read/write streaming, resize events, signals, persistent PTY, and OpenCode
+integration remain outstanding.
+
+PR: https://github.com/gikoko611/GIKOKO-OPENCODE-ARM32/pull/3
