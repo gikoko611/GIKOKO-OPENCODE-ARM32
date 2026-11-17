@@ -9,7 +9,7 @@ permissions:
 jobs:
   inspect-termux-node-arm:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -18,50 +18,82 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq dpkg-dev binutils xz-utils gzip
           python3 - <<'PY'
-          import hashlib, lzma, pathlib, re, urllib.request
+          import gzip, hashlib, lzma, pathlib, re, urllib.error, urllib.request
           base = "https://packages.termux.dev/apt/termux-main"
-          index_url = base + "/dists/stable/main/binary-arm/Packages.xz"
-          print("Fetching:", index_url)
-          with urllib.request.urlopen(index_url, timeout=60) as r:
-              raw = lzma.decompress(r.read()).decode()
-          entries = re.split(r"\n\n+", raw)
+          prefix = base + "/dists/stable/main/binary-arm/Packages"
+          raw = None
+          errors = []
+          for suffix, decoder in ((".xz", lzma.decompress), (".gz", gzip.decompress), ("", lambda b: b)):
+              url = prefix + suffix
+              try:
+                  print("Fetching package index:", url)
+                  with urllib.request.urlopen(url, timeout=60) as response:
+                      payload = response.read()
+                  raw = decoder(payload).decode("utf-8")
+                  print("Package index loaded:", suffix or "plain")
+                  break
+              except Exception as exc:
+                  errors.append(f"{url}: {exc}")
+          if raw is None:
+              raise SystemExit("Unable to download Termux ARM package index:\n" + "\n".join(errors))
+          entries = re.split(r"\n\s*\n", raw)
           candidates = []
           for entry in entries:
-              fields = dict(line.split(": ", 1) for line in entry.splitlines() if ": " in line)
+              fields = {}
+              for line in entry.splitlines():
+                  if line and not line[0].isspace() and ": " in line:
+                      key, value = line.split(": ", 1)
+                      fields[key] = value
               if fields.get("Package") == "nodejs" and fields.get("Architecture") == "arm":
                   candidates.append(fields)
           if not candidates:
-              raise SystemExit("No Termux nodejs package for Architecture: arm found")
-          def version_key(v):
-              return tuple(int(x) if x.isdigit() else x for x in re.findall(r"\d+|[A-Za-z]+", v))
-          pkg = sorted(candidates, key=lambda x: version_key(x["Version"]))[-1]
-          print("Selected Node.js package:", pkg["Version"], pkg["Filename"])
-          if version_key(pkg["Version"]) < version_key("26.4.0"):
-              raise SystemExit("Termux ARM Node.js is older than OpenTUI's documented Node.js 26.4.0 minimum")
+              raise SystemExit("No package stanza found for Package: nodejs / Architecture: arm")
+          if len(candidates) != 1:
+              print("Multiple package stanzas found; selecting the highest Debian version.")
+              candidates.sort(key=lambda p: p.get("Version", ""))
+          pkg = candidates[-1]
+          version = pkg.get("Version", "")
+          if not version or not pkg.get("Filename") or not pkg.get("SHA256"):
+              raise SystemExit("Node.js package stanza is missing Version, Filename, or SHA256")
+          pathlib.Path("node-version.txt").write_text(version)
+          print("Selected Termux Node.js ARM package:", version, pkg["Filename"])
           url = base + "/" + pkg["Filename"]
-          with urllib.request.urlopen(url, timeout=120) as r:
-              deb = r.read()
+          with urllib.request.urlopen(url, timeout=180) as response:
+              deb = response.read()
           digest = hashlib.sha256(deb).hexdigest()
           if digest.lower() != pkg["SHA256"].lower():
-              raise SystemExit("SHA256 mismatch for downloaded Termux Node.js package")
+              raise SystemExit(f"SHA256 mismatch: expected {pkg['SHA256']}, got {digest}")
           pathlib.Path("nodejs-arm.deb").write_bytes(deb)
-          pathlib.Path("node-version.txt").write_text(pkg["Version"])
           print("SHA256 verified:", digest)
           PY
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq dpkg-dev binutils
+
+          NODE_VERSION="$(cat node-version.txt)"
+          if ! dpkg --compare-versions "$NODE_VERSION" ge "26.4.0"; then
+            echo "::error::Termux ARM Node.js $NODE_VERSION is older than the required 26.4.0"
+            exit 1
+          fi
+
           mkdir -p node-root
           dpkg-deb -x nodejs-arm.deb node-root
-          NODE="$(find node-root -path '*/bin/node' -type f -o -path '*/bin/node' -type l | head -n1)"
-          test -n "$NODE"
+          NODE="$(find node-root -type f -o -type l | grep -E '/bin/node$' | head -n1 || true)"
+          if [ -z "$NODE" ]; then
+            echo "::error::The ARM package does not contain a bin/node executable"
+            find node-root -maxdepth 8 -type f | head -100
+            exit 1
+          fi
           REAL_NODE="$(readlink -f "$NODE")"
-          echo "Node path: $NODE"
-          echo "Resolved path: $REAL_NODE"
+          test -f "$REAL_NODE"
+          echo "Node package path: $NODE"
+          echo "Resolved executable: $REAL_NODE"
           readelf -h "$REAL_NODE" | tee node-elf-header.txt
+
           python3 - "$REAL_NODE" <<'PYELF'
           import struct, sys
-          h = open(sys.argv[1], "rb").read(52)
+          with open(sys.argv[1], "rb") as f:
+              h = f.read(52)
           assert h[:4] == b"\x7fELF", "Node executable is not ELF"
           assert h[4] == 1, "Node executable is not ELF32"
           assert h[5] == 1, "Node executable is not little-endian"
@@ -71,15 +103,15 @@ jobs:
           assert flags & 0xFF000000 == 0x05000000, f"Expected ARM EABI5, got e_flags=0x{flags:08x}"
           print(f"PASS: ELF32 ARM EABI5 (e_machine={machine}, e_flags=0x{flags:08x})")
           PYELF
-          echo "version=$(cat node-version.txt)" >> "$GITHUB_OUTPUT"
+
           {
             echo "## Termux ARM Node.js preflight"
-            echo "- Package version: $(cat node-version.txt)"
+            echo "- Package version: $NODE_VERSION"
             echo "- Package architecture: arm"
             echo "- Executable: ELF32, little-endian ARM, EABI5"
             echo "- SHA256: verified against Termux package index"
             echo ""
-            echo "This is static package inspection only. It does not execute Node.js or prove OpenCode/OpenTUI/PTY compatibility on Android."
+            echo "Static package inspection only: this does not execute Node.js or prove OpenCode/OpenTUI/PTY compatibility on Android."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload inspected package for reproducible review
