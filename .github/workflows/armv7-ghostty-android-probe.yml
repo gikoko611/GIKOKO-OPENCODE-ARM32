@@ -60,9 +60,9 @@ jobs:
         run: |
           set -euo pipefail
           zig version
-          # This is a capability probe only: it builds the exact Ghostty VT
-          # library required by opencode-pty, without building the Ghostty app.
-          zig build -Dtarget=arm-linux-android -Dcpu=baseline+soft_float -Doptimize=ReleaseFast \
+          # Zig distinguishes Android ARM's softfp ABI as androideabi.
+          # Using the generic android triple incorrectly selects hard-float.
+          zig build -Dtarget=arm-linux-androideabi -Doptimize=ReleaseFast \
             -Demit-lib-vt=true -Demit-xcframework=false -Dapp-runtime=none \
             --prefix "$GITHUB_WORKSPACE/ghostty-install" --summary all
           LIB="$GITHUB_WORKSPACE/ghostty-install/lib/libghostty-vt.a"
@@ -72,7 +72,7 @@ jobs:
           {
             echo "## Ghostty Android ARMv7 probe"
             echo "- Pinned Ghostty revision: $GHOSTTY_REVISION"
-            echo "- Target: arm-linux-android / baseline+soft_float (Android NDK API 29)"
+            echo "- Target: arm-linux-androideabi (Android armeabi-v7a softfp ABI), API 29"
             echo "- Built libghostty-vt static archive successfully."
             echo "- This does not yet prove the Rust daemon or protocol-8 runtime."
           } >> "$GITHUB_STEP_SUMMARY"
