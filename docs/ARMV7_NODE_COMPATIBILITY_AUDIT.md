@@ -1,0 +1,49 @@
+# OpenCode 2.3.0 Node runtime compatibility audit for ARMv7
+
+## Result
+
+The Node.js route is more promising than the earlier audit suggested: upstream OpenCode 2.3.0 already contains explicit Node runtime branches and a Node CLI build path. This is source-level support, not proof of an Android ARMv7 release. The target still needs a native OpenTUI renderer, a working PTY implementation, native dependency builds, and a phone test.
+
+## Confirmed upstream Node branches
+
+The following files exist in upstream OpenCode 2.3.0:
+
+- `packages/cli/script/build-node.ts`: Node SEA bundling/build script. It currently hard-codes Node 26.4.0 and its target matrix contains Linux ARM64/x64, macOS ARM64, and Windows ARM64/x64; it does **not** include Android or 32-bit ARM.
+- `packages/core/src/database/sqlite.node.ts`: uses `@effect/sql-sqlite-node` and Node's SQLite driver path.
+- `packages/core/src/pty/pty.node.ts`: Node PTY adapter using `@lydell/node-pty`.
+- `packages/core/src/filesystem/fff.node.ts`: Node-specific file-finder adapter; it degrades gracefully if `@ff-labs/fff-node` is unavailable.
+- `packages/core/src/image/photon-wasm.node.ts`: Node WASM asset resolution.
+- `packages/core/src/effect/client-tls/client-tls.node.ts`: Node/undici TLS client.
+- Package import maps in `packages/core/package.json` select Node-specific modules for `#sqlite`, `#pty`, `#persistent-pty-binary`, `#fff`, `#photon-wasm`, and `#client-tls`.
+- `packages/tui/package.json` also has Node-specific import branches for attention sounds, string width, Zed SQLite, and runtime plugin support.
+
+These existing Node branches mean a Node port should be based on upstream's Node runtime implementation, not by rewriting all Bun APIs blindly.
+
+## Confirmed blockers / gaps
+
+1. **CLI build target**: upstream's `build-node.ts` target matrix excludes `arm` and Android. The SEA build target cannot simply be relabeled as ARMv7. A Termux distribution may need to ship the JS bundle plus the Termux Node runtime, rather than a Node SEA executable.
+2. **OpenTUI**: OpenCode's TUI still depends on `@opentui/core`, `@opentui/solid`, and `@opentui/keymap`. A Node runtime alone does not supply the Android ARMv7 Zig/native renderer. The existing Android native package pin in this repo is ARM64-only.
+3. **PTY**: the Node branch uses `@lydell/node-pty`; its native addon must be built and tested for Android Bionic ARMv7. The current repo's known PTY release assets are AArch64.
+4. **Other native dependencies**: `@parcel/watcher`, `@ff-labs/fff-node`, `@silvia-odwyer/photon-node`, and any FFI/native packages must be checked for ARMv7 Android availability or a safe, tested fallback.
+5. **Runtime validation**: static ELF inspection of the Termux Node package does not test its dynamic linker dependencies, Node's experimental FFI, child processes, signals, terminal input, or native addons on the actual phone.
+
+## Recommended implementation sequence
+
+1. Keep the current AArch64 release workflow unchanged.
+2. Add an ARMv7 Node compatibility workflow that inventories upstream Node import branches and probes npm/native package availability without pretending to build a release.
+3. Build OpenTUI's Zig renderer for Android ARMv7/Bionic and publish an ARMv7-specific package.
+4. Build/test the Node PTY addon for Android ARMv7; if node-pty cannot work, implement and test a Termux-native PTY adapter against the existing `Proc` interface.
+5. Add an ARMv7 bundle-and-runtime package path using the Termux Node binary, with all native assets explicitly included.
+6. Run end-to-end tests on Redmi 9A / Android 10 / 32-bit Termux before enabling release.
+
+## Feature-preservation policy
+
+Do not remove OpenCode agents, providers, tools, MCP, LSP, sessions, permissions, plugins, or server/web functionality to make the build pass. Where a platform-specific optional integration is genuinely unavailable, it must be reported explicitly and covered by a parity checklist; core functionality must not silently disappear.
+
+## Upstream source references
+
+- https://github.com/anomalyco/opencode/blob/dev/packages/cli/script/build-node.ts
+- https://github.com/anomalyco/opencode/blob/dev/packages/core/package.json
+- https://github.com/anomalyco/opencode/blob/dev/packages/core/src/pty/pty.node.ts
+- https://github.com/anomalyco/opencode/blob/dev/packages/core/src/database/sqlite.node.ts
+- https://github.com/anomalyco/opencode/blob/dev/packages/tui/package.json
