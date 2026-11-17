@@ -1,4 +1,12 @@
-# opencode for Termux — native Android build (Bionic aarch64)
+# G.I KO KO OpenCode ARM32 Port — development status
+
+> **ARMv7 port is still under development.** The current upstream-derived package configuration and native TUI/PTY assets are AArch64. A successful preflight or diagnostic workflow is not an ARM32 OpenCode build. Do not install an AArch64 release on a 32-bit-only Redmi 9A.
+>
+> Current progress: Termux Node.js 26.13.1 package passed static ELF32 ARM EABI5 and SHA-256 checks. Upstream OpenCode 2.3.0 contains Node-specific code paths, but its Node SEA target matrix excludes 32-bit ARM/Android. OpenTUI's Android ARMv7 renderer and a tested ARMv7 PTY backend are still required.
+>
+> See [ARMv7 port status](docs/ARMV7_PORT_STATUS.md), [Node runtime investigation](docs/ARMV7_NODE_RUNTIME_PATH.md), and [Node compatibility audit](docs/ARMV7_NODE_COMPATIBILITY_AUDIT.md).
+
+---
 
 > [opencode](https://opencode.ai), the open-source AI coding agent, running
 > **natively on your Android phone** through Termux. No proot, no chroot, no
