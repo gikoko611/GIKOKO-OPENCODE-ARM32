@@ -90,39 +90,6 @@ for name, expression in expressions:
     new = f"process.env.{name} ??= __ocPath.join(__ocAssetRoot, {expression})"
     replace_once(vite, old, new)
 
-# Rewrite the OpenTUI runtime path resolver in the Vite module graph. This
-# ensures the explicit Bionic .so path is checked before platform detection.
-plugin = r'''function opentuiAndroidRuntimePlugin(): Plugin {
-  let patched = false
-  return {
-    name: "opencode:android-opentui-native-path",
-    enforce: "pre",
-    transform(code, id) {
-      if (!id.replaceAll("\\", "/").includes("runtime-assets.node")) return
-      const old = `export async function resolveNativeLibraryPath(): Promise<string> {
-  const asset = getNativeAssetDescriptor(getCurrentNodeAssetTarget())
-  if (process.env.OPENTUI_LIB_PATH) {
-    return resolve(process.env.OPENTUI_LIB_PATH)
-  }`
-      const replacement = `export async function resolveNativeLibraryPath(): Promise<string> {
-  if (process.env.OPENTUI_LIB_PATH) {
-    return resolve(process.env.OPENTUI_LIB_PATH)
-  }
-  const asset = getNativeAssetDescriptor(getCurrentNodeAssetTarget())`
-      if (!code.includes(old)) this.error("OpenTUI native resolver changed; Android override was not applied")
-      patched = true
-      return code.replace(old, replacement)
-    },
-    buildEnd() {
-      if (!patched) this.error("OpenTUI Node native resolver was not included in the CLI bundle")
-    },
-  }
-}
-
-'''
-replace_once(vite, 'function runtimeRequirePlugin(): Plugin {', plugin + 'function runtimeRequirePlugin(): Plugin {')
-replace_once(vite, '      runtimeRequirePlugin(),', '      runtimeRequirePlugin(),\n      opentuiAndroidRuntimePlugin(),')
-
 adapter = repo / "termux/armv7/pty-termux.node.ts"
 if not adapter.is_file():
     raise SystemExit(f"Missing Termux PTY adapter: {adapter}")
