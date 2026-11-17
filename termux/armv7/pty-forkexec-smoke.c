@@ -37,7 +37,7 @@ int main(void) {
     }
     if (pid == 0) {
         execl("/system/bin/sh", "sh", "-c",
-              "printf 'PTY_CHILD_OK\\n'; IFS= read -r line; printf 'INPUT:%s\\n' \"$line\"; stty size; exit 7",
+              "printf 'PTY_CHILD_OK\n'; IFS= read -r line; printf 'INPUT:%s\n' \"$line\"; stty size; exit 7",
               (char *)NULL);
         _exit(127);
     }
@@ -52,7 +52,7 @@ int main(void) {
         close(master);
         return 18;
     }
-    static const char input[] = "TERMUX_ARMV7_OK\\n";
+    static const char input[] = "TERMUX_ARMV7_OK\n";
     if (write(master, input, sizeof(input) - 1) != (ssize_t)(sizeof(input) - 1)) {
         perror("write PTY master");
         kill(pid, SIGKILL);
@@ -75,7 +75,7 @@ int main(void) {
     while (!child_done || !saw_marker || !saw_dimensions || !saw_input) {
         long long remaining = deadline - now_ms();
         if (remaining <= 0) {
-            fprintf(stderr, "PTY probe timeout; output=%.*s\\n", (int)used, output);
+            fprintf(stderr, "PTY probe timeout; output=%.*s\n", (int)used, output);
             kill(pid, SIGKILL);
             waitpid(pid, &status, 0);
             close(master);
@@ -135,18 +135,18 @@ int main(void) {
 
     close(master);
     if (!WIFEXITED(status) || WEXITSTATUS(status) != 7) {
-        fprintf(stderr, "Unexpected child status: 0x%x\\n", status);
+        fprintf(stderr, "Unexpected child status: 0x%x\n", status);
         return 15;
     }
     if (!saw_marker || !saw_dimensions || !saw_input) {
-        fprintf(stderr, "Missing expected PTY output: %.*s\\n", (int)used, output);
+        fprintf(stderr, "Missing expected PTY output: %.*s\n", (int)used, output);
         return 16;
     }
 
-    printf("PASS: forkpty created a controlling terminal and spawned /system/bin/sh\\n");
-    printf("PASS: child terminal output streamed through the PTY master\\n");
-    printf("PASS: parent input reached child through PTY master\\n");
-    printf("PASS: child observed resized terminal dimensions 40x100\\n");
-    printf("PASS: waitpid reported the expected child exit code 7\\n");
+    printf("PASS: forkpty created a controlling terminal and spawned /system/bin/sh\n");
+    printf("PASS: child terminal output streamed through the PTY master\n");
+    printf("PASS: parent input reached child through PTY master\n");
+    printf("PASS: child observed resized terminal dimensions 40x100\n");
+    printf("PASS: waitpid reported the expected child exit code 7\n");
     return 0;
 }
