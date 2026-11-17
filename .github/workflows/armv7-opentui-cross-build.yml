@@ -41,6 +41,20 @@ jobs:
           SYSROOT="$NDK/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
           test -d "$SYSROOT/usr/include/arm-linux-androideabi"
           test -d "$SYSROOT/usr/lib/arm-linux-androideabi/29"
+          # Zig 0.17 resolves Android startup objects from cc_dir. The NDK
+          # stores them in the API-specific sysroot directory, so expose the
+          # exact NDK objects at the expected toolchain-bin paths.
+          TOOLCHAIN_BIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          CRT_DIR="$SYSROOT/usr/lib/arm-linux-androideabi/29"
+          for crt in crtbegin_so.o crtend_so.o; do
+            test -s "$CRT_DIR/$crt" || {
+              echo "Missing Android NDK startup object: $CRT_DIR/$crt" >&2
+              find "$SYSROOT/usr/lib/arm-linux-androideabi" -name "$crt" -print >&2
+              exit 1
+            }
+            ln -sf "$CRT_DIR/$crt" "$TOOLCHAIN_BIN/$crt"
+          done
+          ls -l "$TOOLCHAIN_BIN/crtbegin_so.o" "$TOOLCHAIN_BIN/crtend_so.o"
           CXX_SHARED="$(find "$SYSROOT/usr/lib/arm-linux-androideabi" -name libc++_shared.so -type f -print -quit)"
           if [ -z "$CXX_SHARED" ]; then
             echo "NDK libc++_shared.so for armeabi-v7a was not found" >&2
