@@ -513,6 +513,12 @@ jobs:
           fi
           nm -D --defined-only "$LIB" | awk '$3 ~ /^ot/ { print }' > "$GITHUB_WORKSPACE/opentui-exported-ot-symbols.txt"
           test -s "$GITHUB_WORKSPACE/opentui-exported-ot-symbols.txt"
+          for symbol in ot_atomic_u64_load ot_atomic_u64_fetch_add ot_atomic_u64_compare_exchange; do
+            grep -Eq "[[:space:]]$symbol$" "$GITHUB_WORKSPACE/opentui-exported-ot-symbols.txt" || {
+              echo "ERROR: ARMv7 atomic shim symbol is not exported: $symbol" >&2
+              exit 1
+            }
+          done
           grep -Eq "[[:space:]]ot_context_abi_version$" "$GITHUB_WORKSPACE/opentui-exported-ot-symbols.txt" || {
             echo "ERROR: OpenTUI ABI version export is missing" >&2
             exit 1
