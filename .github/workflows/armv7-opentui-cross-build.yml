@@ -529,7 +529,7 @@ jobs:
           grep -Eq 'Machine:.*ARM' "$GITHUB_WORKSPACE/pty-api-elf-header.txt"
           grep -Eq 'Version5 EABI' "$GITHUB_WORKSPACE/pty-api-elf-header.txt"
           grep -Eq 'soft-float ABI' "$GITHUB_WORKSPACE/pty-api-elf-header.txt"
-          if grep -Eqi 'libc\\.so\\.6|ld-linux|libstdc\\+\\+\\.so' "$GITHUB_WORKSPACE/pty-api-dynamic-section.txt"; then
+          if grep -Eqi 'libc\.so\.6|ld-linux|libstdc\+\+\.so' "$GITHUB_WORKSPACE/pty-api-dynamic-section.txt"; then
             echo "ERROR: non-Android runtime dependency found in PTY probe" >&2
             exit 1
           fi
