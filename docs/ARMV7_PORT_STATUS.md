@@ -116,3 +116,10 @@ read/write streaming, resize events, signals, persistent PTY, and OpenCode
 integration remain outstanding.
 
 PR: https://github.com/gikoko611/GIKOKO-OPENCODE-ARM32/pull/3
+
+
+## Agent Skills compatibility (2026-11-17)
+
+OpenCode upstream already provides native Agent Skills support through its built-in `skill` tool and `SKILL.md` discovery. This ARMv7 repository is the Termux packaging/port layer rather than a separate OpenCode source tree; do not implement a parallel skill engine. Preserve the upstream implementation and all discovery, permissions, configured local/HTTP sources, and on-demand loading behavior.
+
+ARMv7-specific compatibility requirements and Redmi 9A release tests are documented in [ARMV7_SKILLS_SUPPORT.md](ARMV7_SKILLS_SUPPORT.md). **Status: upstream feature confirmed; ARMv7 runtime/device verification pending because the full ARMv7 CLI is not yet complete.**
