@@ -15,6 +15,14 @@ References:
 - Termux Node.js package build: https://github.com/termux/termux-packages/tree/master/packages/nodejs
 - Termux Node.js LTS package build: https://github.com/termux/termux-packages/tree/master/packages/nodejs-lts
 
+## Source-level integration finding (OpenTUI v0.8.3)
+
+The pinned OpenTUI source already contains a Node FFI backend in `packages/core/src/platform/ffi.ts`. It loads `node:ffi` through `createRequire` when the runtime is Node, and its package metadata requires Node >=26.4.0. The Node backend uses bigint pointers and supports the standard integer, float, bool, pointer, string-argument, and callback registration paths, with explicit limitations (notably no `usize`, N-API FFI types, pointer overrides, or threadsafe callbacks).
+
+The generated OpenTUI native ABI file contains 366 native symbol declarations and currently has **zero `usize` entries**, so the known `usize` rejection does not block that generated symbol table. This is a static source audit, not an ARM32 execution result.
+
+A concrete integration bug was also identified: `resolveNativeLibraryPath()` called `getNativeAssetDescriptor()` before checking `OPENTUI_LIB_PATH`. The asset target type accepts only `x64` and `arm64`, so a 32-bit Node process (`process.arch === "arm"`) throws before the custom Android library path can be used. The ARMv7 cross-build workflow now patches the resolver to honor `OPENTUI_LIB_PATH` first. This keeps the upstream default asset selection unchanged for supported platforms.
+
 ## Required proof before switching the build
 
 1. Obtain a Termux `arm` Node.js package at version 26.4.0 or newer.
