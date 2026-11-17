@@ -6,43 +6,34 @@
 - Required output: ELF32 little-endian ARM EABI5 (`e_machine=40`)
 - AArch64 (`e_machine=183`) is not acceptable.
 
-## Current state: not yet a working ARM32 port
+## Current state: native OpenTUI library cross-build proven; full CLI port not yet complete
 
-The current release pipeline remains AArch64-oriented. Keep it unchanged until all runtime/native components are built for ARMv7 and pass device tests.
+The AArch64 release pipeline remains unchanged. The ARMv7 OpenTUI experiment now produces a real Android/Bionic ELF32 ARM shared library in GitHub Actions. This is a native-component milestone, not yet an installable OpenCode CLI.
 
 ## Confirmed CI evidence (2026-11-17)
 
-- Termux Node.js ARM package preflight succeeded (run `43999676467`): package checksum verified and executable identified as ELF32 ARM EABI5. Static package evidence only; not a runtime test on the phone.
+- Termux Node.js ARM package preflight succeeded (run `43999676467`): package checksum verified and executable identified as ELF32 ARM EABI5. Static package evidence only; runtime execution on the Redmi 9A is still unverified.
 - Node compatibility audit succeeded (run `44004450476`): registry probes found candidate packages, but did not establish Android Bionic ARMv7 prebuilds or runtime compatibility.
-- OpenTUI cross-build run `44011061039` passed the Android NDK/Bionic header and translate-C setup, and passed the previous missing `dl`/`pthread`/`m` link stage. It then failed with decisive 32-bit source/ABI blockers: `src/context-abi.zig` emits `The OpenTUI C ABI requires a 64-bit target`; `src/scene-record.zig` asserts `@sizeOf(usize) >= 8`; and multiple `u64` atomic operations in OpenTUI and Zig std fail on this ARMv7 target. The C++ sub-build also rejects the injected `-mfloat-abi=hard` flag for `armv7-unknown-linux...-android29`. No ARMv7 `.so` was produced; the uploaded artifact contains diagnostics only.
-- The attempted command was `zig build --libc android-libc.txt -Dlibrary-target=arm-linux-android.29 -Doptimize=ReleaseFast`. This proves the remaining failure is no longer just a missing sysroot or separate Bionic library link: OpenTUI v0.8.3's native ABI and implementation assume 64-bit. It needs a deliberate ARM32 source/ABI port (including pointer/handle layout, scene record sizing, 64-bit atomic fallbacks, and Android compiler flags) before another full build attempt.
+- OpenTUI ARMv7 cross-build succeeded (run `44018098285`, commit `22bd6b4d6c5a3dedc85e276db090768992a3121b`): all 13/13 build steps passed using Zig 0.17.0 and Android NDK 27.2.12479018/API 29. The output was verified as ELF32, little-endian, ARM, EABI5, soft-float ABI. Its dynamic section references Android Bionic libraries (`libc.so`, `libdl.so`, `libm.so`); no glibc `libc.so.6` or `ld-linux` dependency was found. The workflow also packages the matching NDK `libc++_shared.so` as evidence/runtime material.
+- Artifact: [opentui-android-armv7-experiment](https://github.com/gikoko611/GIKOKO-OPENCODE-ARM32/actions/runs/44018098285). The artifact is retained for 14 days from the run.
+- This success proves cross-compilation and ELF metadata only. It does not yet prove that Node FFI can load the library, that the TUI renders correctly on Android, or that the full OpenCode application runs.
 
 Workflow: [ARMv7 OpenTUI native cross-build experiment](../.github/workflows/armv7-opentui-cross-build.yml).
 
-## OpenTUI target gap
+## Remaining implementation gates
 
-OpenTUI v0.8.3 officially lists 64-bit Linux, macOS, and Windows targets; Android and ARMv7 are excluded. The NDK/Bionic sysroot experiment removed the earlier host-header and Bionic library-link blockers, but compilation then reached explicit 64-bit-only source assertions and unsupported 64-bit atomic operations. This is a source/ABI compatibility gap, not a simple linker configuration issue. Do not repeat the same cross-build until the native ABI and implementation have been ported to 32-bit.
-
-## Runtime investigation
-
-A Node.js-based route remains under evaluation because Termux publishes a 32-bit ARM Node package and OpenCode has Node-specific import branches. This does not establish compatibility: CLI target support, OpenTUI renderer/FFI, PTY, and native npm dependencies still need implementation and device tests.
+1. **Node runtime:** acquire the Termux ARM Node runtime and test it on the actual 32-bit Termux device (version, ESM, `node:ffi` / `--experimental-ffi`, child processes, signals, filesystem).
+2. **OpenTUI FFI:** bind the generated `libopentui.so` through OpenTUI's Node FFI path; verify exported symbols, struct layout, callbacks, terminal dimensions, input, and rendering.
+3. **PTY:** build or adapt an ARMv7 Android/Bionic PTY backend and test interactive shell lifecycle, resize, signals, and cleanup.
+4. **Native npm dependencies:** build or provide tested fallbacks for required ARMv7 Android dependencies (filesystem watcher/search, image processing, SQLite and any other runtime-selected native modules).
+5. **OpenCode Node path:** bundle the upstream OpenCode JavaScript/ESM output with Termux Node rather than the unsupported Node SEA target. Audit Bun-only APIs and replace only with tested Node equivalents.
+6. **Package:** produce an ARMv7 Termux installable package containing the correct Node runtime, JS bundle, native libraries, and launcher.
+7. **Device tests:** Redmi 9A / Android 10 / 32-bit Termux end-to-end tests for version, provider request, TUI, file operations, shell/PTY, MCP, LSP, sessions, permissions, plugins, and web/server functions where enabled.
 
 ## Feature preservation
 
-Keep upstream OpenCode agents, providers, tools, sessions, MCP, LSP, permissions, plugins, and server/web functionality. Isolate platform changes to runtime, TUI, PTY, packaging, and launch integration. Report unsupported optional integrations explicitly.
+Keep upstream OpenCode agents, providers, tools, sessions, MCP, LSP, permissions, plugins, and server/web functionality. Isolate platform changes to runtime, TUI, PTY, native dependency packaging, and launch integration. Do not silently remove features to make the ARM32 build pass; document any optional integration that genuinely has no Android implementation.
 
-## Required gates
-- [ ] ARMv7 Android/Bionic JavaScript runtime compatible with OpenCode APIs.
-- [ ] ARMv7 OpenTUI renderer and matching Node FFI.
-- [ ] ARMv7 PTY implementation or tested Termux-native fallback.
-- [ ] ARMv7 builds or tested fallbacks for required native npm dependencies.
-- [ ] Final package passes ELF32 ARM/EABI5 checks with no AArch64 objects.
-- [ ] Android 10 device tests: version, provider request, TUI, files, shell/PTY, MCP, LSP, sessions, and web UI where enabled.
-- [ ] Feature-parity review against pinned upstream OpenCode.
+## Important distinction
 
-Do not publish a placeholder or AArch64 binary under an ARM32 release name.
-
-
-## Second OpenTUI cross-build attempt
-
-The experiment workflow now reaches OpenTUI compilation using Android NDK 27.2.12479018 and the API 29 Bionic sysroot. Run `44011061039` confirms that the next blockers are OpenTUI's 64-bit-only C ABI, `usize` assumptions, `u64` atomics, and an incompatible hard-float flag. No ARMv7 library was produced. A genuine ARM32 source port is required before the build can pass.
+A successful OpenTUI native library build is not a successful OpenCode port. Do not publish a placeholder or AArch64 binary under an ARM32 release name. Do not claim Redmi 9A compatibility until the package has been installed and tested on the actual device.
