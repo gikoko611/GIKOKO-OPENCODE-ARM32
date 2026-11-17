@@ -45,3 +45,19 @@ The pinned OpenCode release also depends on Bun 1.4.4 for workspace installation
 - https://github.com/anomalyco/opencode/blob/v2.3.0/packages/cli/src/node/target.ts
 - https://github.com/anomalyco/opencode/blob/v2.3.0/packages/cli/script/node-assets.ts
 - https://github.com/anomalyco/opencode/blob/v2.3.0/packages/cli/script/opencode-pty.ts
+
+
+## Additional feature-preservation audit
+
+The existing Termux 2.x patch in this repository (`termux/patches/0001-termux-2x-port.patch`) is an AArch64-oriented adaptation, not a valid ARMv7 implementation template. It explicitly allows the persistent PTY asset resolver to fail on Termux, documents a child-process fallback for PTY, and changes the Parcel watcher loader to throw so the upstream watcher can poll instead. Those choices may be acceptable trade-offs in that separate port, but they do not meet this project's stated requirement to preserve full PTY and filesystem-watcher functionality.
+
+Therefore the ARMv7 port must not simply reuse that patch or copy its feature fallbacks. The acceptance gates now explicitly require:
+
+- A real PTY implementation compatible with the upstream persistent PTY protocol and the interactive node-pty contract; no silent pipe-only replacement.
+- A working Android ARMv7 filesystem watcher backend, or an explicit upstream-supported equivalent with tests; do not silently replace native events with polling.
+- Runtime tests for PTY resize, signals, exit status, Unicode input/output, terminal modes, repeated spawn/cleanup, and long-running sessions.
+- Runtime tests for file create/change/rename/delete events, recursive watching, descriptor cleanup, and behavior under Android scoped-storage boundaries.
+
+## Latest native CI evidence
+
+Workflow run [44041115869](https://github.com/gikoko611/GIKOKO-OPENCODE-ARM32/actions/runs/44041115869) completed successfully. Its job built the OpenTUI Android ARMv7 shared library and compiled the Bionic `openpty()`/window-size API probe as ELF32 ARM EABI5. This validates cross-compilation of those isolated native experiments only. It does not prove that the library loads and renders on the Redmi 9A, nor does the PTY probe implement either full PTY contract above.
