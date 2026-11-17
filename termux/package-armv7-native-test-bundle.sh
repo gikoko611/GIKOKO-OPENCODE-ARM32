@@ -10,16 +10,19 @@ cp -f "$ROOT/libopentui-android-armv7.so" "$STAGE/"
 cp -f "$ROOT/libnode-ffi-smoke.so" "$STAGE/"
 cp -f "$ROOT/libpty-api-smoke-android-armv7.so" "$STAGE/"
 cp -f "$ROOT/pty-forkexec-smoke-android-armv7" "$STAGE/"
+cp -f "$ROOT/termux-pty-android-armv7.node" "$STAGE/"
 cp -f "$ROOT/libc++_shared-android-armv7.so" "$STAGE/"
 cp -f "$ROOT"/termux/test-node-ffi-armv7.sh "$STAGE/"
 cp -f "$ROOT"/termux/test-node-runtime-armv7.sh "$STAGE/"
 cp -f "$ROOT"/termux/test-opentui-armv7.sh "$STAGE/"
 cp -f "$ROOT"/termux/test-pty-api-armv7.sh "$STAGE/"
 cp -f "$ROOT"/termux/test-pty-forkexec-armv7.sh "$STAGE/"
+cp -f "$ROOT"/termux/test-pty-napi-armv7.sh "$STAGE/"
 cp -f "$ROOT"/termux/armv7/node-ffi-smoke.mjs "$STAGE/"
 cp -f "$ROOT"/termux/armv7/node-runtime-smoke.mjs "$STAGE/"
 cp -f "$ROOT"/termux/armv7/node-opentui-load-smoke.mjs "$STAGE/"
 cp -f "$ROOT"/termux/armv7/node-pty-api-smoke.mjs "$STAGE/"
+cp -f "$ROOT"/termux/armv7/node-pty-napi-smoke-armv7.mjs "$STAGE/"
 cp -f "$ROOT"/*elf*.txt "$STAGE/metadata/" 2>/dev/null || true
 cp -f "$ROOT"/*dynamic*.txt "$STAGE/metadata/" 2>/dev/null || true
 cp -f "$ROOT"/opentui-exported-ot-symbols.txt "$STAGE/metadata/" 2>/dev/null || true
@@ -34,7 +37,7 @@ Target: Android 10 / Termux / armeabi-v7a / API 29
 This is an intermediate native validation bundle, NOT a complete OpenCode
 CLI installer. It contains OpenTUI and PTY experiments plus device test
 scripts. It does not yet contain the OpenCode JavaScript application bundle,
-a complete node-pty addon, a complete Termux package, or end-to-end feature
+the upstream node-pty integration, a complete Termux package, or end-to-end feature
 validation. Do not install it as OpenCode.
 
 Extract the ZIP into one directory on the Redmi 9A. From Termux, cd into
@@ -44,6 +47,7 @@ that directory and run the scripts:
   bash test-opentui-armv7.sh
   bash test-pty-api-armv7.sh
   bash test-pty-forkexec-armv7.sh
+  bash test-pty-napi-armv7.sh
 
 The tests use the colocated native libraries by default. Keep metadata/
 when reporting failures.
