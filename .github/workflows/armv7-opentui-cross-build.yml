@@ -89,6 +89,39 @@ jobs:
           test -s opentui/packages/native/src/vendor/zig-deps.tar.gz
           sha256sum opentui/packages/native/src/vendor/zig-deps.tar.gz | tee opentui-vendor-sha256.txt
 
+      - name: Patch Node FFI runtime to honor an explicit Android library path
+        working-directory: opentui/packages/core
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/platform/runtime-assets.node.ts")
+          source = path.read_text()
+          old = """export async function resolveNativeLibraryPath(): Promise<string> {
+            const asset = getNativeAssetDescriptor(getCurrentNodeAssetTarget())
+            if (process.env.OPENTUI_LIB_PATH) {
+              return resolve(process.env.OPENTUI_LIB_PATH)
+            }
+          """
+          new = """export async function resolveNativeLibraryPath(): Promise<string> {
+            // Android/ARMv7 is intentionally supplied as an explicit local
+            // Bionic library path; do not resolve the unsupported npm target
+            // before honoring this override.
+            if (process.env.OPENTUI_LIB_PATH) {
+              return resolve(process.env.OPENTUI_LIB_PATH)
+            }
+
+            const asset = getNativeAssetDescriptor(getCurrentNodeAssetTarget())
+          """
+          if source.count(old) != 1:
+              raise SystemExit("runtime-assets.node.ts: expected exactly one native path resolver block")
+          path.write_text(source.replace(old, new, 1))
+          print("Patched explicit OPENTUI_LIB_PATH override ahead of platform asset detection.")
+          PY
+          grep -n -A12 'resolveNativeLibraryPath' src/platform/runtime-assets.node.ts
+
       - name: Patch OpenTUI translate-c include paths for Android
         working-directory: opentui/packages/native
         shell: bash
