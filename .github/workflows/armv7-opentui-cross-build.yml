@@ -20,8 +20,11 @@ on:
     paths:
       - ".github/workflows/armv7-opentui-cross-build.yml"
       - "termux/armv7/pty-api-smoke.c"
+      - "termux/armv7/pty-forkexec-smoke.c"
       - "termux/armv7/node-pty-api-smoke.mjs"
       - "termux/test-pty-api-armv7.sh"
+      - "termux/test-pty-forkexec-armv7.sh"
+      - "termux/package-armv7-native-test-bundle.sh"
 
 permissions:
   contents: read
