@@ -402,64 +402,90 @@ jobs:
           extern "c" fn pthread_peekjoin_np(thread: std.Thread.Handle, result: ?*?*anyopaque) c_int;
           '''
           new = '''extern "c" fn pthread_mach_thread_np(thread: std.c.pthread_t) std.c.mach_port_t;
-          // Android's Bionic has no GNU pthread_tryjoin_np. Keep the declaration
-          // out of the Android compilation unit so no unresolved ELF symbol leaks.
+          // GNU pthread join extensions are unavailable in Android Bionic.
           const linux_thread_api = if (builtin.abi == .android) struct {} else struct {
               extern "c" fn pthread_tryjoin_np(thread: std.Thread.Handle, result: ?*?*anyopaque) c_int;
               extern "c" fn pthread_peekjoin_np(thread: std.Thread.Handle, result: ?*?*anyopaque) c_int;
           };
           '''
           if source.count(old) != 1:
-              raise SystemExit("host.zig: pthread extern declaration block mismatch")
+              raise SystemExit("host.zig: GNU pthread declaration block mismatch")
           source = source.replace(old, new, 1)
 
-          old = '''fn tryJoinThread(thread: std.Thread, worker_finished: *const std.atomic.Value(bool)) bool {
-              // Bionic does not provide GNU pthread_tryjoin_np (or pthread_timedjoin_np).
-              // The worker publishes completion with release semantics; only then is
-              // a blocking join safe and guaranteed not to stall the polling thread.
+          old = "    thread: ?std.Thread = null,\n"
+          new = old + "    worker_finished: std.atomic.Value(bool) = .init(false),\n"
+          if source.count(old) != 1:
+              raise SystemExit("host.zig: Operation.thread field mismatch")
+          source = source.replace(old, new, 1)
+
+          old = "    fn waylandBmpWorker(operation: *Operation) void {\n"
+          new = old + "        defer operation.worker_finished.store(true, .release);\n"
+          if source.count(old) != 1:
+              raise SystemExit("host.zig: waylandBmpWorker insertion point mismatch")
+          source = source.replace(old, new, 1)
+
+          begin = source.index("fn tryJoinThread(thread: std.Thread) bool {")
+          finish = source.index("\npub const Operation = struct {", begin)
+          replacement = '''fn tryJoinThread(thread: std.Thread, worker_finished: *const std.atomic.Value(bool)) bool {
               if (comptime builtin.abi == .android) {
-                  if (!worker_finished.load(.acquire)) return false;
-                  thread.join();
-                  return true;
-              }
-              return switch (builtin.os.tag) {'''
-          new = '''fn tryJoinThread(thread: std.Thread, worker_finished: *const std.atomic.Value(bool)) bool {
-              // Bionic has no nonblocking pthread join. The worker publishes completion
-              // with release semantics; acquire-load then makes a blocking join safe.
-              if (comptime builtin.abi == .android) {
+                  // Bionic has no nonblocking pthread join. The worker's release
+                  // store guarantees join cannot block once this acquire-load passes.
                   if (!worker_finished.load(.acquire)) return false;
                   thread.join();
                   return true;
               } else {
-                  return switch (builtin.os.tag) {'''
-          if source.count(old) != 1:
-              raise SystemExit("host.zig: Android tryJoinThread branch mismatch")
-          source = source.replace(old, new, 1)
-
-          old = '''        else => @compileError("Unsupported clipboard worker target"),
-              };
-          }'''
-          new = '''        else => @compileError("Unsupported clipboard worker target"),
+                  return switch (builtin.os.tag) {
+                      .linux => switch (linux_thread_api.pthread_tryjoin_np(thread.getHandle(), null)) {
+                          0 => true,
+                          @backingInt(std.posix.E.BUSY) => false,
+                          else => false,
+                      },
+                      .freebsd => switch (linux_thread_api.pthread_peekjoin_np(thread.getHandle(), null)) {
+                          0 => {
+                              thread.join();
+                              return true;
+                          },
+                          @backingInt(std.posix.E.BUSY) => false,
+                          else => false,
+                      },
+                      .windows => blk: {
+                          const timeout: std.os.windows.LARGE_INTEGER = 0;
+                          if (std.os.windows.ntdll.NtWaitForSingleObject(thread.getHandle(), .FALSE, &timeout) != .SUCCESS) break :blk false;
+                          thread.join();
+                          break :blk true;
+                      },
+                      .macos => blk: {
+                          var info: std.c.thread_basic_info = undefined;
+                          var count = std.c.THREAD.BASIC.INFO_COUNT;
+                          const result = std.c.thread_info(
+                              pthread_mach_thread_np(thread.getHandle()),
+                              std.c.THREAD.BASIC.INFO,
+                              @ptrCast(&info),
+                              &count,
+                          );
+                          if (result != 0 and result != 4) break :blk false;
+                          if (result == 0 and info.run_state != 5) break :blk false;
+                          thread.join();
+                          break :blk true;
+                      },
+                      else => @compileError("Unsupported clipboard worker target"),
                   };
               }
-          }'''
+          }
+          '''
+          source = source[:begin] + replacement + source[finish:]
+
+          old = "        if (!tryJoinThread(thread)) return false;"
+          new = "        if (!tryJoinThread(thread, &operation.worker_finished)) return false;"
           if source.count(old) != 1:
-              raise SystemExit("host.zig: tryJoinThread switch terminator mismatch")
+              raise SystemExit("host.zig: joinCompletedWorker call-site mismatch")
           source = source.replace(old, new, 1)
 
-          source = source.replace(
-              "pthread_tryjoin_np(thread.getHandle(), null)",
-              "linux_thread_api.pthread_tryjoin_np(thread.getHandle(), null)",
-          )
-          source = source.replace(
-              "pthread_peekjoin_np(thread.getHandle(), null)",
-              "linux_thread_api.pthread_peekjoin_np(thread.getHandle(), null)",
-          )
-
           path.write_text(source)
-          print("Android now compiles a separate completion-flag join branch; GNU pthread declarations are excluded.")
+          print("Patched Android Bionic worker join using an acquire/release completion flag.")
           PY
-          sed -n '/linux_thread_api/,+42p' src/clipboard/host.zig
+          grep -n -A48 'fn tryJoinThread' src/clipboard/host.zig
+          grep -n -A12 'fn joinCompletedWorker' src/clipboard/host.zig
       - name: Cross-compile with Android Bionic sysroot
         working-directory: opentui/packages/native
         shell: bash
