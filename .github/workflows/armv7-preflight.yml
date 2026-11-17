@@ -1,0 +1,70 @@
+name: ARMv7 prerequisite preflight
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check upstream Bun Android release architectures
+        id: bun
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://api.github.com/repos/oven-sh/bun/releases/latest -o bun-release.json
+          python3 - <<'PY'
+          import json, os
+          d=json.load(open("bun-release.json"))
+          names=[a["name"] for a in d.get("assets",[])]
+          print("Bun release:", d.get("tag_name"))
+          android=[n for n in names if "android" in n.lower()]
+          armv7=[n for n in names if any(x in n.lower() for x in ("armv7","armv7l","armhf","armv6"))]
+          print("Android-related assets:", android or "(none explicitly named)")
+          print("32-bit ARM assets:", armv7 or "(none)")
+          with open(os.environ["GITHUB_OUTPUT"],"a") as f:
+              f.write("armv7_asset="+("true" if armv7 else "false")+"\n")
+          PY
+
+      - name: Check Termux OpenTUI ARMv7 package
+        id: opentui
+        shell: bash
+        run: |
+          set -euo pipefail
+          found=false
+          for package in @androidtui/core-android-arm @androidtui/core-android-armv7; do
+            encoded="$(python3 -c 'import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1],safe=""))' "$package")"
+            code="$(curl -sS -o /tmp/npm.json -w '%{http_code}' "https://registry.npmjs.org/$encoded")"
+            echo "$package -> HTTP $code"
+            [ "$code" = "200" ] && found=true
+          done
+          echo "available=$found" >> "$GITHUB_OUTPUT"
+
+      - name: Check project pins and summarize
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          v=json.load(open("versions.json"))
+          print("Current OpenCode pin:", v.get("opencode"))
+          print("Current Bun pin:", v.get("bunTermux",{}).get("version"))
+          print("Current OpenTUI native pin:", v.get("opentui",{}).get("androidArm64Native"))
+          print("Current PTY asset:", v.get("bunPty",{}).get("assetUrl"))
+          print("Current PTY service:", v.get("ptyService",{}).get("assetUrl"))
+          PY
+          {
+            echo "## ARMv7 preflight"
+            echo ""
+            echo "- Bun 32-bit ARM asset: `${{ steps.bun.outputs.armv7_asset }}`"
+            echo "- OpenTUI ARMv7 npm package: `${{ steps.opentui.outputs.available }}`"
+            echo ""
+            echo "A missing prerequisite blocks a native ARMv7 release. This check does not build or publish an ARM32 binary."
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Keep the release pipeline protected
+        run: |
+          echo "Preflight complete. Do not change the AArch64 release workflow until all ARMv7 runtime and native prerequisites exist."
