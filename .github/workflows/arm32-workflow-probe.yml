@@ -1,0 +1,11 @@
+name: ARM32 workflow syntax probe
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/arm32-workflow-probe.yml"
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo "workflow parser and runner are operational"
