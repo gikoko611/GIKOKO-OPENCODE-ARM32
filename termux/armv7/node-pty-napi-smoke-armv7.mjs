@@ -16,6 +16,11 @@ for (const name of ["spawn", "resize", "signal", "wait", "close"]) {
   assert.equal(typeof api[name], "function", `missing N-API method: ${name}`)
 }
 const cwd = process.cwd()
+assert.throws(
+  () => api.spawn("/system/bin/gikoko-missing-executable", [], 24, 80, cwd, {}),
+  /not found|No such file|executable/i,
+  "spawn must report an exec failure instead of returning a dead PTY",
+)
 const child = api.spawn(
   "/system/bin/sh",
   ["-c", "printf 'NAPI_PTY_READY\\n'; printf 'NAPI_ENV:%s\\n' \"$GIKOKO_PTY_TEST\"; printf 'NAPI_CWD:'; pwd; IFS= read -r input; printf 'NAPI_INPUT:%s\\n' \"$input\"; stty size; exit 9"],
