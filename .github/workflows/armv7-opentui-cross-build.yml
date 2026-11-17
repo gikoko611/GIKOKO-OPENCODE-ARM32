@@ -429,6 +429,10 @@ jobs:
           readelf --dyn-syms --wide "$LIB" > "$GITHUB_WORKSPACE/opentui-dynamic-symbols.txt"
           nm -D --defined-only "$LIB" | awk '$3 ~ /^ot/ { print }' > "$GITHUB_WORKSPACE/opentui-exported-ot-symbols.txt"
           test -s "$GITHUB_WORKSPACE/opentui-exported-ot-symbols.txt"
+          grep -Eq "[[:space:]]ot_context_abi_version$" "$GITHUB_WORKSPACE/opentui-exported-ot-symbols.txt" || {
+            echo "ERROR: OpenTUI ABI version export is missing" >&2
+            exit 1
+          }
           if grep -Eqi 'GLIBC_|ld-linux|libc\.so\.6' "$GITHUB_WORKSPACE/opentui-dynamic-symbols.txt"; then
             echo "ERROR: glibc symbol/version reference found" >&2
             exit 1
