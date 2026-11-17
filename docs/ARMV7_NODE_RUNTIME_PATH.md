@@ -84,9 +84,9 @@ Artifact ID: `14304174110`; size: 7,945,611 bytes; expiry: 2026-12-01. Direct ZI
 - `test-node-ffi-armv7.sh`
 - `node-ffi-smoke-elf.txt` and `node-ffi-smoke-dynamic.txt`
 
-Both `.so` files are ELF32 ARM EABI5 soft-float Android API 29 libraries. The OpenTUI library depends on Bionic `libc.so`, `libm.so`, and `libdl.so`; the smaller smoke library depends on `libc.so` and `libdl.so`. This is build and binary-inspection evidence only, not a successful FFI runtime test.
+Both `.so` files are ELF32 ARM EABI5 soft-float Android API 29 libraries. The OpenTUI library depends on Bionic `libc.so`, `libm.so`, and `libdl.so`; the smaller smoke library depends on `libc.so` and `libdl.so`. The separate FFI smoke library has now also passed real Node FFI calls on the Redmi 9A; the OpenTUI library itself still needs its dedicated load/ABI test.
 
-Run `bash test-node-ffi-armv7.sh` inside the Redmi 9A's 32-bit Termux environment after extracting the artifact. The script requires Node >=26.4.0, `process.arch === "arm"`, and the `--experimental-ffi` feature. Keep the exact terminal output for the next compatibility decision.
+Run `bash test-node-ffi-armv7.sh` inside the Redmi 9A's 32-bit Termux environment after extracting the artifact. This passed on the device. Next, run `bash test-opentui-armv7.sh` from the same extracted directory to load the actual OpenTUI library and call its `ot_context_abi_version()` export. The script requires Node >=26.4.0, `process.arch === "arm"`, and `--experimental-ffi`.
 
 
 ## Confirmed on Redmi 9A / Termux (2026-11-17)
