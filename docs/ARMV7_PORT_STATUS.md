@@ -37,3 +37,15 @@ Keep upstream OpenCode agents, providers, tools, sessions, MCP, LSP, permissions
 ## Important distinction
 
 A successful OpenTUI native library build is not a successful OpenCode port. Do not publish a placeholder or AArch64 binary under an ARM32 release name. Do not claim Redmi 9A compatibility until the package has been installed and tested on the actual device.
+
+
+## Latest FFI handoff evidence (2026-11-17)
+
+- Latest cross-build run: [44029335974](https://github.com/gikoko611/GIKOKO-OPENCODE-ARM32/actions/runs/44029335974), commit `8ffacf0307fc64b06df12d9de117481d6f5592ef`, **success**.
+- The run compiled both the OpenTUI Android ARMv7 native library and a separate Node FFI smoke-test library; all build, ELF verification, and artifact upload steps passed.
+- Artifact: [opentui-android-armv7-experiment](https://github.com/gikoko611/GIKOKO-OPENCODE-ARM32/actions/runs/44029335974/artifacts/14304174110), artifact ID `14304174110`, 7,945,611 bytes, retained until 2026-12-01.
+- The artifact contains `libopentui-android-armv7.so`, `libnode-ffi-smoke.so`, `node-ffi-smoke.mjs`, and `test-node-ffi-armv7.sh`, plus ELF/dynamic-symbol evidence.
+- Direct artifact inspection confirmed both native libraries are ELF32 little-endian ARM EABI5 with soft-float ABI. The OpenTUI library is Android API 29 and its dynamic dependencies are `libm.so`, `libc.so`, and `libdl.so`; the smoke library is Android API 29 and depends on `libdl.so` and `libc.so`.
+- **Not yet verified:** Node `node:ffi` execution, FFI marshalling, OpenTUI loading, terminal rendering, or any Redmi 9A device behavior. The smoke script must be run on the actual 32-bit Termux Node runtime.
+
+The next gate is the on-device smoke test, followed by the separate PTY/native-dependency work. The full OpenCode CLI remains incomplete.
