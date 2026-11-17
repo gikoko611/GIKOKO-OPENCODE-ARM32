@@ -77,8 +77,8 @@ if data.count(tail) != 1:
     raise SystemExit(f"{assets}: native asset tail count {data.count(tail)}")
 assets.write_text(data.replace(tail, "", 1))
 
-# Preserve launcher-provided native asset paths. Photon uses its module-level
-# asset key rather than a target property in upstream's Node prelude.
+# Preserve launcher-provided native asset paths. Photon uses a module-level
+# asset key in upstream's Node prelude rather than a target property.
 expressions = [
     ("OPENCODE_NODE_PTY_PATH", '${JSON.stringify(input.target.nodePtyEntryAsset)}'),
     ("OPENCODE_PARCEL_WATCHER_PATH", '${JSON.stringify(input.target.parcelWatcherAsset)}'),
@@ -90,6 +90,39 @@ for name, expression in expressions:
     old = f"process.env.{name} = __ocPath.join(__ocAssetRoot, {expression})"
     new = f"process.env.{name} ??= __ocPath.join(__ocAssetRoot, {expression})"
     replace_once(vite, old, new)
+
+# Rewrite the OpenTUI runtime path resolver in the Vite module graph. This
+# ensures the explicit Bionic .so path is checked before platform detection.
+plugin = r'''function opentuiAndroidRuntimePlugin(): Plugin {
+  let patched = false
+  return {
+    name: "opencode:android-opentui-native-path",
+    enforce: "pre",
+    transform(code, id) {
+      if (!id.replaceAll("\\", "/").includes("runtime-assets.node")) return
+      const old = `export async function resolveNativeLibraryPath(): Promise<string> {
+  const asset = getNativeAssetDescriptor(getCurrentNodeAssetTarget())
+  if (process.env.OPENTUI_LIB_PATH) {
+    return resolve(process.env.OPENTUI_LIB_PATH)
+  }`
+      const replacement = `export async function resolveNativeLibraryPath(): Promise<string> {
+  if (process.env.OPENTUI_LIB_PATH) {
+    return resolve(process.env.OPENTUI_LIB_PATH)
+  }
+  const asset = getNativeAssetDescriptor(getCurrentNodeAssetTarget())`
+      if (!code.includes(old)) this.error("OpenTUI native resolver changed; Android override was not applied")
+      patched = true
+      return code.replace(old, replacement)
+    },
+    buildEnd() {
+      if (!patched) this.error("OpenTUI Node native resolver was not included in the CLI bundle")
+    },
+  }
+}
+
+'''
+replace_once(vite, 'function runtimeRequirePlugin(): Plugin {', plugin + 'function runtimeRequirePlugin(): Plugin {')
+replace_once(vite, '      runtimeRequirePlugin(),', '      runtimeRequirePlugin(),\n      opentuiAndroidRuntimePlugin(),')
 
 adapter = repo / "termux/armv7/pty-termux.node.ts"
 if not adapter.is_file():
@@ -120,4 +153,4 @@ if source.count(old) != 1:
 pty.write_text(source.replace(old, new, 1))
 replace_once(watcher, '  if (process.platform === "linux") return "inotify"',
     '  if (process.platform === "linux" || process.platform === "android") return "inotify"')
-print("Android ARMv7 Node ESM target, Termux PTY adapter, and external native path overrides patched.")
+print("Android ARMv7 Node ESM target, Termux PTY adapter, and OpenTUI native path override patched.")
