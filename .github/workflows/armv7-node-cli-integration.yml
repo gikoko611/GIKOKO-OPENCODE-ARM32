@@ -40,6 +40,8 @@ jobs:
       - name: Install workspace dependencies
         working-directory: upstream
         run: bun install
+      - name: Patch installed OpenTUI runtime resolver
+        run: python3 termux/ci/patch-opentui-node-runtime.py upstream
       - name: Build and smoke-test Android ARMv7 Node ESM bundle
         working-directory: upstream/packages/cli
         env:
