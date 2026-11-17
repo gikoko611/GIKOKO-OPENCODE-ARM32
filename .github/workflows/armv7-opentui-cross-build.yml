@@ -275,7 +275,7 @@ jobs:
           old = '''    module.link_libcpp = true;
               module.addIncludePath(yoga_dep.path(""));'''
           new = '''    const target = module.resolved_target.?.result;
-              if (target.os.tag == .android) {
+              if (target.os.tag == .linux and target.abi == .android) {
                   module.link_libcpp = false;
                   if (b.graph.environ_map.get("ANDROID_SYSROOT")) |sysroot| {
                       module.addSystemIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/include/c++/v1" }) });
@@ -294,7 +294,7 @@ jobs:
 
           old = '''    module.addOptions("build_options", build_options);
               addTranslatedCImports(b, module, optimize, target);'''
-          new = '''    if (target.result.os.tag == .android and target.result.cpu.arch == .arm) {
+          new = '''    if (target.result.os.tag == .linux and target.result.abi == .android and target.result.cpu.arch == .arm) {
                   module.addCSourceFile(.{ .file = b.path("src/atomic64_android.c"), .flags = &.{"-std=c11"} });
               }
               module.addOptions("build_options", build_options);
