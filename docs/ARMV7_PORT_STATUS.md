@@ -19,6 +19,10 @@ The current build pipeline is an AArch64/Bionic pipeline copied from the upstrea
 
 Changing architecture strings, Debian package metadata, or runner labels alone would produce a broken package. The release workflow must remain AArch64-only until every required runtime/native component has an actual ARMv7 build and passes device tests.
 
+## OpenTUI Android ARMv7 cross-build experiment
+
+A GitHub Actions experiment now attempts the custom Zig target `arm-linux-android.29` against the pinned OpenTUI v0.8.3 source without changing upstream's official target matrix. It prepares the vendored Zig dependencies, cross-compiles the native library, then verifies ELF32/ARM and rejects glibc linkage. Workflow: [ARMv7 OpenTUI native cross-build experiment](../.github/workflows/armv7-opentui-cross-build.yml). This is an experiment only; even a successful cross-build still needs Node FFI, PTY integration, and actual Android 10/Termux terminal tests.
+
 ## Confirmed OpenTUI ARMv7 blocker
 
 The pinned OpenTUI 0.8.3 native Zig build explicitly lists eight supported targets: Linux x86_64/aarch64 (glibc/musl), macOS x86_64/aarch64, and Windows x86_64/aarch64. It does not include Android or 32-bit ARM. Its published core package also has no Android ARMv7 optional native package. A real ARMv7 port therefore needs a source-level native renderer port plus Android/Bionic cross-linking, not a renamed package. Details and source references are recorded in [Node compatibility audit](ARMV7_NODE_COMPATIBILITY_AUDIT.md).
