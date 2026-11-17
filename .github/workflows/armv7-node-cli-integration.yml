@@ -1,0 +1,62 @@
+name: ARMv7 Android Node CLI integration build
+
+on:
+  push:
+    branches: ["armv7/**"]
+    paths:
+      - ".github/workflows/armv7-node-cli-integration.yml"
+      - "termux/ci/build-armv7-node-cli.py"
+      - "termux/armv7/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: armv7-node-cli-integration-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  node-cli-esm-bundle:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26.4.0
+      - name: Fetch pinned upstream source
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch v2.3.0 https://github.com/anomalyco/opencode.git upstream
+      - name: Patch Android ARMv7 Node bundle path
+        run: python3 termux/ci/build-armv7-node-cli.py upstream
+      - name: Install workspace dependencies
+        working-directory: upstream
+        run: bun install --frozen-lockfile
+      - name: Build and smoke-test Android ARMv7 Node ESM bundle
+        working-directory: upstream/packages/cli
+        env:
+          OPENCODE_TARGET: android-arm
+          OPENCODE_VERSION: "2.3.0"
+          OPENCODE_CHANNEL: "termux-armv7"
+        run: |
+          set -euo pipefail
+          bun run script/build-node.ts --bundle-only --skip-install --outdir=dist/armv7-node-cli
+          test -s dist-node/opencode.mjs
+          node --experimental-ffi --use-system-ca --disable-warning=ExperimentalWarning dist-node/opencode.mjs --version
+          node --experimental-ffi --use-system-ca --disable-warning=ExperimentalWarning dist-node/opencode.mjs --help >/dev/null
+          mkdir -p ../../dist/armv7-node-cli
+          cp dist-node/opencode.mjs ../../dist/armv7-node-cli/opencode.mjs
+          cp dist-node/assets/app-archive.bin ../../dist/armv7-node-cli/app-archive.bin
+          sha256sum ../../dist/armv7-node-cli/* > ../../dist/armv7-node-cli/SHA256SUMS
+      - name: Upload ARMv7 Node CLI bundle candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: OPENCODE-ANDROID-ARMV7-NODE-CLI-BUNDLE-CANDIDATE
+          path: upstream/dist/armv7-node-cli/
+          if-no-files-found: error
+          retention-days: 14
