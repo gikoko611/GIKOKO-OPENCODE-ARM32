@@ -33,11 +33,13 @@ jobs:
         run: |
           set -euo pipefail
           git clone --depth 1 --branch v2.3.0 https://github.com/anomalyco/opencode.git upstream
+      - name: Apply pinned Termux dependency versions
+        run: bun termux/ci/versions.ts apply --target upstream
       - name: Patch Android ARMv7 Node bundle path
         run: python3 termux/ci/build-armv7-node-cli.py upstream
       - name: Install workspace dependencies
         working-directory: upstream
-        run: bun install --frozen-lockfile
+        run: bun install
       - name: Build and smoke-test Android ARMv7 Node ESM bundle
         working-directory: upstream/packages/cli
         env:
