@@ -185,6 +185,12 @@ jobs:
           EOF
           (cd "$ROOT" && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
           du -ah "$ROOT" | sort -h | tail -20
+      - name: Install LLVM archive tools for Ghostty audit
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y llvm
+          command -v llvm-ar
       - name: Audit final package contents and launch scripts
         run: |
           set -euo pipefail
