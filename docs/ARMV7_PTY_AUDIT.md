@@ -87,3 +87,31 @@ The Node FFI smoke test has passed on the Redmi 9A, but this does not change the
 - the separate `opencode-pty` persistent daemon protocol and lifecycle.
 
 Keep the two implementations independently testable. Do not replace either with pipe-based `child_process.spawn` and silently lose terminal semantics or persistent-session ownership/handoff.
+
+
+## ARMv7 Bionic PTY primitive probe
+
+A separate compile-and-device-test probe is being added before attempting a Node-API
+PTY implementation. The probe calls Android/Bionic `openpty()`, applies terminal
+dimensions with `TIOCSWINSZ`, reads them back with `TIOCGWINSZ`, and closes
+both descriptors. It is intentionally not presented as a complete PTY backend:
+it does not fork/exec a child, stream data, implement resize events in Node, or
+manage process exit and signals.
+
+The CI artifact will include:
+- `libpty-api-smoke-android-armv7.so`
+- `node-pty-api-smoke.mjs`
+- `test-pty-api-armv7.sh`
+- ELF header and dynamic dependency reports
+
+After extracting the artifact into `~/pty-armv7-test`, run:
+
+```sh
+cd ~/pty-armv7-test
+bash test-pty-api-armv7.sh ./libpty-api-smoke-android-armv7.so
+```
+
+A successful on-device result proves only that Bionic PTY allocation and terminal
+window-size ioctls work through the installed ARMv7 Node FFI. The next implementation
+must still cover child creation, controlling-terminal/session setup, nonblocking
+I/O, resize propagation, signal/exit handling, and descriptor cleanup.

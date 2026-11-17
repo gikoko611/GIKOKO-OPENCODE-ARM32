@@ -1,8 +1,8 @@
 name: ARMv7 OpenTUI native cross-build experiment
 
 on:
-  # Manual only: OpenTUI v0.8.3 currently has a 64-bit-only native ABI.
-  # Do not spend hosted runner time until the ARM32 ABI port is implemented.
+  # The ARMv7 native experiment runs manually, on matching main pushes,
+  # and on pull requests that modify the ARMv7 PTY probe.
   workflow_dispatch:
   push:
     branches: [main]
@@ -10,8 +10,17 @@ on:
       - ".github/workflows/armv7-opentui-cross-build.yml"
       - "termux/armv7/node-runtime-smoke.mjs"
       - "termux/armv7/node-opentui-load-smoke.mjs"
+      - "termux/armv7/pty-api-smoke.c"
+      - "termux/armv7/node-pty-api-smoke.mjs"
       - "termux/test-node-runtime-armv7.sh"
       - "termux/test-opentui-armv7.sh"
+      - "termux/test-pty-api-armv7.sh"
+  pull_request:
+    paths:
+      - ".github/workflows/armv7-opentui-cross-build.yml"
+      - "termux/armv7/pty-api-smoke.c"
+      - "termux/armv7/node-pty-api-smoke.mjs"
+      - "termux/test-pty-api-armv7.sh"
 
 permissions:
   contents: read
@@ -108,12 +117,16 @@ jobs:
           cp "$GITHUB_WORKSPACE/termux/armv7/node-opentui-load-smoke.mjs" "$GITHUB_WORKSPACE/"
           cp "$GITHUB_WORKSPACE/termux/test-node-runtime-armv7.sh" "$GITHUB_WORKSPACE/"
           cp "$GITHUB_WORKSPACE/termux/test-opentui-armv7.sh" "$GITHUB_WORKSPACE/"
+          cp "$GITHUB_WORKSPACE/termux/armv7/node-pty-api-smoke.mjs" "$GITHUB_WORKSPACE/"
+          cp "$GITHUB_WORKSPACE/termux/test-pty-api-armv7.sh" "$GITHUB_WORKSPACE/"
           test -s "$GITHUB_WORKSPACE/node-ffi-smoke.mjs"
           test -s "$GITHUB_WORKSPACE/test-node-ffi-armv7.sh"
           test -s "$GITHUB_WORKSPACE/node-runtime-smoke.mjs"
           test -s "$GITHUB_WORKSPACE/node-opentui-load-smoke.mjs"
           test -s "$GITHUB_WORKSPACE/test-node-runtime-armv7.sh"
           test -s "$GITHUB_WORKSPACE/test-opentui-armv7.sh"
+          test -s "$GITHUB_WORKSPACE/node-pty-api-smoke.mjs"
+          test -s "$GITHUB_WORKSPACE/test-pty-api-armv7.sh"
 
       - name: Fetch pinned OpenTUI source
         shell: bash
@@ -498,6 +511,35 @@ jobs:
             echo "- Actual OpenTUI FFI loading, terminal rendering, and full OpenCode runtime remain unverified."
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Build Android ARMv7 Bionic PTY API probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi29-clang"
+          test -x "$CC"
+          "$CC" -shared -fPIC -O2 -mfloat-abi=softfp -mfpu=vfpv3-d16 \
+            -Wl,--no-undefined -Wl,-soname,libpty-api-smoke-android-armv7.so \
+            "$GITHUB_WORKSPACE/termux/armv7/pty-api-smoke.c" \
+            -o "$GITHUB_WORKSPACE/libpty-api-smoke-android-armv7.so"
+          file "$GITHUB_WORKSPACE/libpty-api-smoke-android-armv7.so"
+          readelf -h "$GITHUB_WORKSPACE/libpty-api-smoke-android-armv7.so" | tee "$GITHUB_WORKSPACE/pty-api-elf-header.txt"
+          readelf -d "$GITHUB_WORKSPACE/libpty-api-smoke-android-armv7.so" | tee "$GITHUB_WORKSPACE/pty-api-dynamic-section.txt"
+          grep -q 'Class:.*ELF32' "$GITHUB_WORKSPACE/pty-api-elf-header.txt"
+          grep -Eq 'Machine:.*ARM' "$GITHUB_WORKSPACE/pty-api-elf-header.txt"
+          grep -Eq 'Version5 EABI' "$GITHUB_WORKSPACE/pty-api-elf-header.txt"
+          grep -Eq 'soft-float ABI' "$GITHUB_WORKSPACE/pty-api-elf-header.txt"
+          if grep -Eqi 'libc\.so\.6|ld-linux|libstdc\+\+\.so' "$GITHUB_WORKSPACE/pty-api-dynamic-section.txt"; then
+            echo "ERROR: non-Android runtime dependency found in PTY probe" >&2
+            exit 1
+          fi
+          {
+            echo "## Android ARMv7 PTY API probe"
+            echo "- Compiled against Android NDK API 29 / Bionic."
+            echo "- ELF32 ARM EABI5 soft-float ABI verified."
+            echo "- Probe exercises openpty(), TIOCSWINSZ, TIOCGWINSZ and descriptor cleanup."
+            echo "- Device-side execution is required; this compile does not prove full node-pty semantics."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload native build evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -521,5 +563,10 @@ jobs:
             opentui-vendor-sha256.txt
             android-libc.txt
             libc++_shared-android-armv7.so
+            libpty-api-smoke-android-armv7.so
+            pty-api-elf-header.txt
+            pty-api-dynamic-section.txt
+            node-pty-api-smoke.mjs
+            test-pty-api-armv7.sh
           if-no-files-found: ignore
           retention-days: 14

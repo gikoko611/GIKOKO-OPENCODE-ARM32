@@ -98,3 +98,28 @@ The user ran the shipped `test-node-ffi-armv7.sh` on the target Redmi 9A in Term
 This is direct device-side proof that the installed 32-bit Termux Node 26.4.0 runtime can load an Android ARMv7 shared library through experimental `node:ffi` and correctly marshal the tested scalar and pointer values. The ExperimentalWarning is expected and is not a test failure.
 
 The result does **not** yet prove that `libopentui-android-armv7.so` itself loads, that the TUI renders, or that OpenCode runs. The next validation is to load the actual OpenTUI library and call its no-argument `ot_context_abi_version()` export, then run Node child-process/signal/filesystem checks. PTY and remaining native modules are still blocking integration items.
+
+
+## Custom provider compatibility target (2026-11-17)
+
+The V2 custom-provider contract is documented in [ARMV7_CUSTOM_PROVIDER_COMPAT.md](ARMV7_CUSTOM_PROVIDER_COMPAT.md). The target preserves OpenCode's native `providers` configuration, OpenAI-compatible runtime package, credentials, model map, and multiple-provider behavior. Arbitrary custom endpoints do not automatically support dynamic model discovery; only providers/runtimes or plugins that implement discovery can offer it. No ARMv7 end-to-end provider request has been claimed yet.
+
+
+## ARMv7 PTY primitive probe added (2026-11-17)
+
+A draft implementation PR adds a dedicated Android/Bionic ARMv7 probe that
+cross-compiles `openpty()` plus terminal window-size ioctls and exposes them
+through Node `node:ffi` for on-device execution. This is a feasibility gate,
+not a full PTY backend. It still requires CI compilation and Redmi 9A execution.
+Even if it passes, interactive child lifecycle, controlling-terminal setup,
+read/write streaming, resize events, signals, persistent PTY, and OpenCode
+integration remain outstanding.
+
+PR: https://github.com/gikoko611/GIKOKO-OPENCODE-ARM32/pull/3
+
+
+## Agent Skills compatibility (2026-11-17)
+
+OpenCode upstream already provides native Agent Skills support through its built-in `skill` tool and `SKILL.md` discovery. This ARMv7 repository is the Termux packaging/port layer rather than a separate OpenCode source tree; do not implement a parallel skill engine. Preserve the upstream implementation and all discovery, permissions, configured local/HTTP sources, and on-demand loading behavior.
+
+ARMv7-specific compatibility requirements and Redmi 9A release tests are documented in [ARMV7_SKILLS_SUPPORT.md](ARMV7_SKILLS_SUPPORT.md). **Status: upstream feature confirmed; ARMv7 runtime/device verification pending because the full ARMv7 CLI is not yet complete.**
