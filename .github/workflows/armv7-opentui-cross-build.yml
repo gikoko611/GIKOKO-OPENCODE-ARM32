@@ -12,6 +12,9 @@ on:
       - "termux/armv7/node-opentui-load-smoke.mjs"
       - "termux/armv7/pty-api-smoke.c"
       - "termux/armv7/pty-forkexec-smoke.c"
+      - "termux/armv7/termux-pty-android.c"
+      - "termux/armv7/node-pty-napi-smoke-armv7.mjs"
+      - "termux/test-pty-napi-armv7.sh"
       - "termux/armv7/node-pty-api-smoke.mjs"
       - "termux/test-node-runtime-armv7.sh"
       - "termux/test-opentui-armv7.sh"
@@ -569,6 +572,44 @@ jobs:
             echo "- Cross-compiled forkpty/exec/waitpid PTY test as ELF32 ARM EABI5."
             echo "- Device test checks controlling terminal, child output, terminal dimensions, and exit status."
             echo "- Cross-compilation is not a substitute for executing this probe on the Redmi 9A."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build Android ARMv7 Node-API PTY addon
+        shell: bash
+        run: |
+          set -euo pipefail
+          NODE_VERSION=26.4.0
+          HEADERS="$RUNNER_TEMP/node-v${NODE_VERSION}-headers"
+          mkdir -p "$HEADERS"
+          curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-headers.tar.gz" | tar -xz -C "$HEADERS"
+          test -s "$HEADERS/include/node/node_api.h"
+          CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi29-clang"
+          test -x "$CC"
+          "$CC" -std=c11 -shared -fPIC -O2 -Wall -Wextra -Werror \
+            -mfloat-abi=softfp -mfpu=vfpv3-d16 -DNAPI_VERSION=8 \
+            -DNODE_GYP_MODULE_NAME=termux_pty_android \
+            -I"$HEADERS/include/node" \
+            "$GITHUB_WORKSPACE/termux/armv7/termux-pty-android.c" \
+            -Wl,-soname,termux-pty-android-armv7.node \
+            -o "$GITHUB_WORKSPACE/termux-pty-android-armv7.node"
+          file "$GITHUB_WORKSPACE/termux-pty-android-armv7.node"
+          readelf -h "$GITHUB_WORKSPACE/termux-pty-android-armv7.node" | tee "$GITHUB_WORKSPACE/termux-pty-napi-elf-header.txt"
+          readelf -d "$GITHUB_WORKSPACE/termux-pty-android-armv7.node" | tee "$GITHUB_WORKSPACE/termux-pty-napi-dynamic-section.txt"
+          readelf -Ws "$GITHUB_WORKSPACE/termux-pty-android-armv7.node" | grep 'napi_register_module_v1'
+          grep -q 'Class:.*ELF32' "$GITHUB_WORKSPACE/termux-pty-napi-elf-header.txt"
+          grep -Eq 'Machine:.*ARM' "$GITHUB_WORKSPACE/termux-pty-napi-elf-header.txt"
+          grep -Eq 'Version5 EABI' "$GITHUB_WORKSPACE/termux-pty-napi-elf-header.txt"
+          grep -Eq 'soft-float ABI' "$GITHUB_WORKSPACE/termux-pty-napi-elf-header.txt"
+          if grep -Eqi 'libc\\.so\\.6|ld-linux|libstdc\\+\\+\\.so' "$GITHUB_WORKSPACE/termux-pty-napi-dynamic-section.txt"; then
+            echo "ERROR: non-Android runtime dependency found in Node-API PTY addon" >&2
+            exit 1
+          fi
+          {
+            echo "## Android ARMv7 Node-API PTY addon"
+            echo "- Built against Node v${NODE_VERSION} N-API v8 headers and Android NDK API 29."
+            echo "- Exports spawn/forkpty, resize, signal, waitpid and descriptor-close methods."
+            echo "- Device smoke test validates addon loading, child input/output, resize and exit status."
+            echo "- This is a native PTY adapter probe, not yet the complete upstream node-pty/persistent PTY integration."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Assemble one-download ARMv7 native test bundle
