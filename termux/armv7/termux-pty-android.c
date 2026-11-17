@@ -34,40 +34,102 @@ static char *get_string(napi_env env, napi_value value) {
   return result;
 }
 
-/* spawn(file, args[], rows, cols) -> { pid, fd } */
+static void free_strings(char **items, uint32_t count) {
+  if (!items) return;
+  for (uint32_t i = 0; i < count; i++) free(items[i]);
+  free(items);
+}
+
+/* spawn(file, args[], rows, cols[, cwd, env]) -> { pid, fd } */
 static napi_value spawn_pty(napi_env env, napi_callback_info info) {
-  size_t argc = 4;
-  napi_value argv[4];
-  if (napi_get_cb_info(env, info, &argc, argv, NULL, NULL) != napi_ok || argc != 4)
-    return fail(env, "spawn(file, args, rows, cols) requires four arguments");
+  size_t argc = 6;
+  napi_value argv[6];
+  if (napi_get_cb_info(env, info, &argc, argv, NULL, NULL) != napi_ok || argc < 4 || argc > 6)
+    return fail(env, "spawn(file, args, rows, cols[, cwd, env]) requires four to six arguments");
 
   char *file = get_string(env, argv[0]);
   if (!file || !*file) { free(file); return fail(env, "spawn: executable path is empty or invalid"); }
+  char *cwd = NULL;
+  if (argc >= 5) {
+    napi_valuetype type;
+    if (napi_typeof(env, argv[4], &type) != napi_ok) { free(file); return fail(env, "spawn: invalid cwd"); }
+    if (type != napi_null && type != napi_undefined) {
+      cwd = get_string(env, argv[4]);
+      if (!cwd) { free(file); return fail(env, "spawn: cwd must be a string or null"); }
+    }
+  }
 
   bool is_array = false;
   if (napi_is_array(env, argv[1], &is_array) != napi_ok || !is_array) {
-    free(file); return fail(env, "spawn: args must be an array");
+    free(cwd); free(file); return fail(env, "spawn: args must be an array");
   }
   uint32_t count = 0;
   if (napi_get_array_length(env, argv[1], &count) != napi_ok || count > 256) {
-    free(file); return fail(env, "spawn: args array is invalid or too long");
+    free(cwd); free(file); return fail(env, "spawn: args array is invalid or too long");
   }
   char **child_argv = (char **)calloc((size_t)count + 2, sizeof(char *));
-  if (!child_argv) { free(file); return fail(env, "spawn: out of memory"); }
+  if (!child_argv) { free(cwd); free(file); return fail(env, "spawn: out of memory"); }
   child_argv[0] = strdup(file);
+  if (!child_argv[0]) { free(child_argv); free(cwd); free(file); return fail(env, "spawn: out of memory"); }
   for (uint32_t i = 0; i < count; i++) {
     napi_value item;
     if (napi_get_element(env, argv[1], i, &item) != napi_ok || !(child_argv[i + 1] = get_string(env, item))) {
-      for (uint32_t j = 0; j <= i; j++) free(child_argv[j]);
-      free(child_argv); free(file); return fail(env, "spawn: every argument must be a string");
+      free_strings(child_argv, i + 1); free(cwd); free(file);
+      return fail(env, "spawn: every argument must be a string");
+    }
+  }
+
+  char **env_items = NULL;
+  uint32_t env_count = 0;
+  if (argc >= 6) {
+    bool is_array_env = false;
+    napi_valuetype env_type;
+    if (napi_typeof(env, argv[5], &env_type) != napi_ok || env_type != napi_object ||
+        napi_is_array(env, argv[5], &is_array_env) != napi_ok || is_array_env) {
+      free_strings(child_argv, count + 1); free(cwd); free(file);
+      return fail(env, "spawn: env must be an object");
+    }
+    napi_value keys;
+    if (napi_get_property_names(env, argv[5], &keys) != napi_ok ||
+        napi_get_array_length(env, keys, &env_count) != napi_ok || env_count > 512) {
+      free_strings(child_argv, count + 1); free(cwd); free(file);
+      return fail(env, "spawn: env object is invalid or too large");
+    }
+    env_items = (char **)calloc((size_t)env_count + 1, sizeof(char *));
+    if (!env_items) {
+      free_strings(child_argv, count + 1); free(cwd); free(file);
+      return fail(env, "spawn: out of memory");
+    }
+    for (uint32_t i = 0; i < env_count; i++) {
+      napi_value key_value, val_value;
+      char *key = NULL, *val = NULL;
+      if (napi_get_element(env, keys, i, &key_value) != napi_ok ||
+          napi_get_property(env, argv[5], key_value, &val_value) != napi_ok ||
+          !(key = get_string(env, key_value)) || !(val = get_string(env, val_value)) ||
+          !*key || strchr(key, '=')) {
+        free(key); free(val); free_strings(env_items, i);
+        free_strings(child_argv, count + 1); free(cwd); free(file);
+        return fail(env, "spawn: env keys and values must be strings; keys cannot contain '='");
+      }
+      size_t key_len = strlen(key), val_len = strlen(val);
+      env_items[i] = (char *)malloc(key_len + val_len + 2);
+      if (!env_items[i]) {
+        free(key); free(val); free_strings(env_items, i);
+        free_strings(child_argv, count + 1); free(cwd); free(file);
+        return fail(env, "spawn: out of memory");
+      }
+      memcpy(env_items[i], key, key_len);
+      env_items[i][key_len] = '=';
+      memcpy(env_items[i] + key_len + 1, val, val_len + 1);
+      free(key); free(val);
     }
   }
 
   int rows = 24, cols = 80;
   if (!get_i32(env, argv[2], &rows) || !get_i32(env, argv[3], &cols) ||
       rows < 1 || rows > 1000 || cols < 1 || cols > 1000) {
-    for (uint32_t i = 0; i <= count; i++) free(child_argv[i]);
-    free(child_argv); free(file); return fail(env, "spawn: rows/cols must be between 1 and 1000");
+    free_strings(env_items, env_count); free_strings(child_argv, count + 1); free(cwd); free(file);
+    return fail(env, "spawn: rows/cols must be between 1 and 1000");
   }
 
   struct winsize ws = {0};
@@ -77,19 +139,26 @@ static napi_value spawn_pty(napi_env env, napi_callback_info info) {
   pid_t pid = forkpty(&master, NULL, NULL, &ws);
   if (pid < 0) {
     int saved = errno;
-    for (uint32_t i = 0; i <= count; i++) free(child_argv[i]);
-    free(child_argv); free(file);
+    free_strings(env_items, env_count); free_strings(child_argv, count + 1); free(cwd); free(file);
     return fail(env, strerror(saved));
   }
   if (pid == 0) {
+    if (cwd && chdir(cwd) != 0) _exit(126);
+    for (uint32_t i = 0; i < env_count; i++) {
+      char *separator = strchr(env_items[i], '=');
+      if (separator) {
+        *separator = '\0';
+        if (setenv(env_items[i], separator + 1, 1) != 0) _exit(126);
+      }
+    }
     execvp(file, child_argv);
     _exit(127);
   }
 
-  for (uint32_t i = 0; i <= count; i++) free(child_argv[i]);
-  free(child_argv); free(file);
+  free_strings(env_items, env_count); free_strings(child_argv, count + 1); free(cwd); free(file);
   int flags = fcntl(master, F_GETFL);
   if (flags >= 0) (void)fcntl(master, F_SETFL, flags | O_NONBLOCK);
+  (void)fcntl(master, F_SETFD, FD_CLOEXEC);
 
   napi_value result, value;
   napi_create_object(env, &result);
