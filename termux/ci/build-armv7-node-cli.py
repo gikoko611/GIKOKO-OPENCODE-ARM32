@@ -40,7 +40,6 @@ replace_once(target, '  const fffFfiPackage = `@yuuang/ffi-rs-${targetPlatform}-
 # from their separately verified GitHub Actions artifacts.
 data = assets.read_text()
 for line in [
-    'import { getNodeAssets } from "@opentui/core/node-assets"\n',
     'import { collectFiles } from "./files"\n',
     'import { resolveOpencodePty } from "./opencode-pty"\n',
 ]:
@@ -64,7 +63,7 @@ old = '''  const opencodePty = await resolveOpencodePty({
 '''
 if data.count(old) != 1:
     raise SystemExit(f"{assets}: native asset collector anchor count {data.count(old)}")
-data = data.replace(old, '  const assets: NodeAsset[] = [\n', 1)
+data = data.replace(old, '  const assets: NodeAsset[] = [\n    ...getNodeAssets({ platform: "linux", arch: "x64" }).filter((asset) => !asset.key.startsWith("@opentui/core-linux-x64/")),\n', 1)
 tail = '''    ...(opencodePty && target.opencodePtyAsset ? [{ key: target.opencodePtyAsset, source: opencodePty.source }] : []),
     ...(await collectFiles(ptyRoot))
       .filter((relative) => !relative.endsWith(".map") && !relative.endsWith(".pdb"))
