@@ -75,6 +75,8 @@ jobs:
           path = Path("build.zig")
           source = path.read_text()
           replacements = {
+              '        .linux => {\n            module.linkSystemLibrary("dl", .{});\n            module.linkSystemLibrary("pthread", .{});\n            module.linkSystemLibrary("m", .{});\n        },':
+                  '        .linux => {\n            // Android Bionic provides dl, pthread and libm through libc.\n            if (target.result.abi != .android) {\n                module.linkSystemLibrary("dl", .{});\n                module.linkSystemLibrary("pthread", .{});\n                module.linkSystemLibrary("m", .{});\n            }\n        },',
               '    miniaudio_translate.addIncludePath(b.path("src"));':
                   '    if (b.graph.environ_map.get("ANDROID_SYSROOT")) |sysroot| {\n'
                   '        miniaudio_translate.addSystemIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/include/arm-linux-androideabi" }) });\n'
