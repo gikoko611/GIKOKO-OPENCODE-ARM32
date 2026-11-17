@@ -119,4 +119,10 @@ if source.count(old) != 1:
 pty.write_text(source.replace(old, new, 1))
 replace_once(watcher, '  if (process.platform === "linux") return "inotify"',
     '  if (process.platform === "linux" || process.platform === "android") return "inotify"')
+# Rollup eagerly resolves OpenTUI's platform-specific dynamic import even
+# though the Termux launcher supplies OPENTUI_LIB_PATH and the resolver returns
+# that path before the fallback import is reached. Keep the fallback external.
+replace_once(vite,
+    '      rollupOptions: {\n',
+    '      rollupOptions: {\n        external: (id) => id.startsWith("@opentui/core-android-"),\n')
 print("Android ARMv7 Node ESM target, Termux PTY adapter, and OpenTUI native path override patched.")
