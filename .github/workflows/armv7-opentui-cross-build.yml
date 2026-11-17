@@ -379,16 +379,34 @@ jobs:
           readelf -d "$LIB" | tee "$GITHUB_WORKSPACE/opentui-dynamic-section.txt"
           grep -q 'Class:.*ELF32' "$GITHUB_WORKSPACE/opentui-elf-header.txt"
           grep -Eq 'Machine:.*ARM' "$GITHUB_WORKSPACE/opentui-elf-header.txt"
-          if readelf -d "$LIB" | grep -Eqi 'libc\.so\.6|ld-linux'; then
-            echo "ERROR: glibc dependency found in Android target" >&2
+          grep -Eq 'Version5 EABI' "$GITHUB_WORKSPACE/opentui-elf-header.txt"
+          grep -Eq 'soft-float ABI' "$GITHUB_WORKSPACE/opentui-elf-header.txt"
+          readelf -d "$LIB" | tee "$GITHUB_WORKSPACE/opentui-dynamic-section.txt"
+          if readelf -d "$LIB" | grep -Eqi 'libc\.so\.6|ld-linux|libstdc\+\+\.so'; then
+            echo "ERROR: non-Android runtime dependency found in Android target" >&2
+            exit 1
+          fi
+          for dep in libc.so libm.so libdl.so; do
+            grep -Fq "Shared library: [$dep]" "$GITHUB_WORKSPACE/opentui-dynamic-section.txt" || {
+              echo "ERROR: expected Bionic dependency missing: $dep" >&2
+              exit 1
+            }
+          done
+          readelf --dyn-syms --wide "$LIB" > "$GITHUB_WORKSPACE/opentui-dynamic-symbols.txt"
+          nm -D --defined-only "$LIB" | awk '$3 ~ /^ot/ { print }' > "$GITHUB_WORKSPACE/opentui-exported-ot-symbols.txt"
+          test -s "$GITHUB_WORKSPACE/opentui-exported-ot-symbols.txt"
+          if grep -Eqi 'GLIBC_|ld-linux|libc\.so\.6' "$GITHUB_WORKSPACE/opentui-dynamic-symbols.txt"; then
+            echo "ERROR: glibc symbol/version reference found" >&2
             exit 1
           fi
           cp "$LIB" "$GITHUB_WORKSPACE/libopentui-android-armv7.so"
           {
             echo "## OpenTUI Android ARMv7 cross-build"
-            echo "- Native library compiled with the Android NDK API 29 Bionic sysroot."
-            echo "- ELF32 ARM and no glibc dynamic dependency verified."
-            echo "- Node FFI compatibility and on-device terminal rendering remain unverified."
+            echo "- Native library compiled with Android NDK API 29 Bionic sysroot."
+            echo "- ELF32 / ARM / EABI5 / soft-float ABI verified."
+            echo "- Dynamic dependencies verified: libc.so, libm.so, libdl.so only."
+            echo "- Exported OpenTUI C symbols and dynamic symbol table captured as artifacts."
+            echo "- Node FFI calls and on-device terminal rendering remain unverified."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload native build evidence
@@ -400,6 +418,8 @@ jobs:
             libopentui-android-armv7.so
             opentui-elf-header.txt
             opentui-dynamic-section.txt
+            opentui-dynamic-symbols.txt
+            opentui-exported-ot-symbols.txt
             opentui-vendor-sha256.txt
             android-libc.txt
             libc++_shared-android-armv7.so
