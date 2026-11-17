@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include <node_api.h>
+#include <stdbool.h>
 #include <pty.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
