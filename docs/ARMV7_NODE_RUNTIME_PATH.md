@@ -54,14 +54,18 @@ bash test-node-ffi-armv7.sh
 
 The Node FFI API is experimental and requires `--experimental-ffi`; official Node v26.4.0 documentation describes the `dlopen()` API and supported scalar/pointer types: https://nodejs.org/download/release/v26.4.0/docs/api/ffi.html
 
+## On-device Node FFI result (2026-11-17)
+
+The user executed `bash test-node-ffi-armv7.sh` on the Redmi 9A / 32-bit Termux. Output confirmed Node `v26.4.0`, `process.arch === "arm"`, `process.platform === "android"`, successful `node:ffi` loading of the ARMv7/Bionic smoke library, and passing `i32`, `u64`, `f64`, and pointer argument/return calls. This is real device-side runtime evidence, not merely a CI cross-build. The experimental FFI warning is expected. It does not yet prove the OpenTUI library itself loads or that the full OpenCode app runs.
+
 ## Required proof before switching the build
 
-1. Obtain a Termux `arm` Node.js package at version 26.4.0 or newer.
-2. Verify the executable is ELF32, little-endian ARM, EABI5 (`e_machine=40`); inspect its dynamic dependencies and Android API compatibility.
-3. Run the exact Node binary inside a 32-bit Termux/Android environment and verify `node --version`, ESM, `node:ffi`, `--experimental-ffi`, child processes, signals, and filesystem behavior.
-4. Build OpenTUI's Zig native core for Android ARMv7/Bionic; verify FFI calls and terminal rendering on the target device. The official prebuilt package list does not supply this target.
-5. Audit OpenCode's runtime imports and build scripts. Replace Bun-only functionality only with tested Node equivalents, without removing MCP, LSP, providers, tools, sessions, permissions, or other upstream features.
-6. Implement an ARMv7 PTY backend and test interactive shell lifecycle, resize, signals, and cleanup.
+1. Node `v26.4.0`, `process.arch === "arm"`, Android platform, ESM, and `node:ffi` scalar/pointer calls are now confirmed on the Redmi 9A.
+2. Run the additional child-process, signal, and filesystem runtime checks.
+3. Load the actual Android ARMv7 `libopentui.so` through Node FFI and call the exported ABI-version function; then validate generated bindings, callbacks, terminal dimensions, input, and rendering.
+4. Audit OpenCode's runtime imports and build scripts. Replace Bun-only functionality only with tested Node equivalents, without removing MCP, LSP, providers, tools, sessions, permissions, or other upstream features.
+5. Implement an ARMv7 PTY backend and test interactive shell lifecycle, resize, signals, and cleanup.
+6. Build/test required native dependencies (SQLite, filesystem watcher/search, image processing, and other selected runtime modules).
 7. Run an end-to-end Android 10 ARMv7 test matrix before publishing.
 
 ## Current decision
@@ -122,3 +126,12 @@ This confirms all of the following on the actual 32-bit Android/Termux device:
 The warning about experimental FFI is expected and does not indicate test failure.
 
 The test used the small dedicated FFI smoke library, **not** `libopentui-android-armv7.so`. Therefore the OpenTUI generated ABI table, all 366 symbols, struct layouts, callbacks, native scene lifecycle, and actual terminal rendering are still unverified. The next engineering step is an OpenTUI-specific FFI integration harness and device test.
+
+
+## Next device validation
+
+The next artifact will include two small tests:
+- a Node runtime test for ESM, filesystem read/write, shell child process, and signal handling;
+- an OpenTUI library test that loads the actual `libopentui-android-armv7.so` and calls the generated no-argument `ot_context_abi_version` export.
+
+Passing these checks still does not equal terminal rendering or a complete OpenCode port.
