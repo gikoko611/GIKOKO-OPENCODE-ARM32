@@ -2,53 +2,55 @@
 
 Date: 2026-11-17
 
-This audit tracks the Redmi 9A / Termux ARMv7 port and separates successful cross-compilation from a runnable, feature-complete CLI.
+This audit tracks the Redmi 9A / Termux ARMv7 port and separates successful cross-compilation, host-side bundle validation, and real-device runtime validation.
 
 ## Build architecture
 
 - The standard `packages/cli/script/build.ts` path produces a Bun-compiled executable. Its official target matrix does not include Android ARMv7.
-- Upstream also has `packages/cli/script/build-node.ts`, which produces a Node.js ESM bundle and optionally a Node SEA executable. This is the more promising route for Termux because the device already supplies Node.js.
-- However, `packages/cli/src/node/target.ts` still restricts targets to `darwin | linux | win32` and `arm64 | x64`. The Node asset collector requires platform-specific node-pty, Parcel watcher, FFF binary, FFF FFI, Photon WASM, app assets, and optional persistent-PTY assets. Android ARMv7 must be added as a real target and each required asset must be supplied or safely adapted; merely running the x64 `--bundle-only` baseline is not an ARMv7 build.
-- Core features such as Skills, MCP, Plugins, LSP, Providers, Agents, and Sessions are largely in the CLI/server module graph. They should remain in the Node bundle, but feature parity also depends on the runtime and native adapters below.
+- Upstream also has `packages/cli/script/build-node.ts`, which produces a Node.js ESM bundle. This is the selected Termux route because the phone already supplies Node.js 26.4.0; a Node SEA executable is not required.
+- The Android ARMv7 target has now been added in the integration build patcher. The Node ESM bundle was built successfully for `android-arm` and passed host-side `--version` and `--help` smoke tests.
+- Core features such as Skills, MCP, Plugins, LSP, Providers, Agents, and Sessions remain in the upstream CLI/server module graph. Their presence in the bundle does not by itself prove their on-device runtime behavior.
 
-## Native component CI results (2026-11-17)
+## Verified build results
 
-The following GitHub Actions jobs completed successfully on the current ARMv7 branch:
+| Component | Result | Evidence / remaining gate |
+|---|---|---|
+| OpenTUI native | Cross-build success | ARMv7 Bionic .so and native test bundle produced; device FFI/rendering tests remain |
+| Node-API PTY adapter | Cross-build success | ARMv7 addon produced; device child I/O/resize/exit tests remain |
+| Parcel watcher | Cross-build success | ARMv7 watcher.node produced; recursive event semantics need device tests |
+| Persistent PTY | Cross-build success | Protocol-8 ELF32 ARM daemon produced; device protocol tests remain |
+| Ghostty lib-vt | Cross-build success | ARMv7 static archive produced; daemon links its own build; device terminal tests remain |
+| Node ESM CLI bundle | Success | Android ARMv7 target bundle generated; `--version` and `--help` passed on x64 host |
+| Full Termux package assembly | In progress | Workflow downloads native artifacts and assembles a one-directory candidate; must complete and pass device tests |
 
-| Component | Result | What is proven | What is not yet proven |
-|---|---|---|---|
-| OpenTUI | Success | Android ARMv7 native build/test artifact produced | Full CLI renderer startup on the Redmi 9A |
-| Ghostty lib-vt | Success | ARMv7 library probe artifact produced | Integration with the Rust daemon and terminal rendering on-device |
-| Parcel watcher | Success | Android ARMv7 Node-API addon cross-compiled | Recursive watcher event semantics on-device |
-| Persistent PTY | Success | Protocol-8 daemon ELF32/ARM candidate cross-compiled | Protocol-8 runtime, process lifecycle, and terminal behavior on-device |
-| Node ESM baseline | Success (x64 host only) | Upstream Node bundle build path and CLI smoke test on x64 | Android ARMv7 bundle or execution |
+Node ESM bundle run:
+- https://github.com/gikoko611/GIKOKO-OPENCODE-ARM32/actions/runs/44078993963
+- Artifact: `OPENCODE-ANDROID-ARMV7-NODE-CLI-BUNDLE-CANDIDATE`
+- Artifact ID: `14326351972`
+- Bundle output: approximately 22.58 MB before artifact compression.
 
-Run evidence:
+Native component run evidence:
 - OpenTUI/native test bundle: https://github.com/gikoko611/GIKOKO-OPENCODE-ARM32/actions/runs/44075779712
 - Persistent PTY candidate: https://github.com/gikoko611/GIKOKO-OPENCODE-ARM32/actions/runs/44075790548
 - Ghostty ARMv7 probe: https://github.com/gikoko611/GIKOKO-OPENCODE-ARM32/actions/runs/44075786786
 - Parcel watcher candidate: https://github.com/gikoko611/GIKOKO-OPENCODE-ARM32/actions/runs/44075783172
 
-These are candidate artifacts, not an installable OpenCode release.
+## Runtime integration details
 
-## Persistent PTY daemon
+- The Android Node PTY adapter loads its Node-API addon lazily, so non-terminal commands such as `--version` and `--help` do not fail on the x64 build runner because the Android-only .node file is absent.
+- Android recursive watching uses the inotify backend through the ARMv7 Parcel watcher addon.
+- OpenTUI's Node runtime resolver is patched to honor an explicit `OPENTUI_LIB_PATH` before trying to resolve an unsupported platform target.
+- The Termux launcher sets explicit paths for the OpenTUI library, PTY addon, Parcel watcher, Photon WASM, and persistent PTY daemon.
+- Upstream `packages/core/src/filesystem/search.ts` falls back to its ripgrep-backed search layer whenever `Fff.available()` is false. The Android package therefore requires the Termux `ripgrep` executable when FFF native acceleration is unavailable; file search is not intentionally disabled.
 
-The persistent-PTY binding imports `binaryPath` from `@opencode/pty`. Its daemon is a separate Rust program in `packages/process-daemon`, using `portable-pty`, Unix `libc` / `nix`, and Ghostty VT. The ARMv7 cross-build now succeeds, but ABI correctness and runtime behavior still require device tests.
+## Remaining release gates
 
-The Node-API forkpty adapter is a separate ordinary-PTY experiment. It must not be presented as a replacement for the protocol-8 persistent daemon.
-
-## Filesystem watcher
-
-Upstream uses Node's `fs.watch` for individual files and immediate directory entries, but delegates recursive directory subscriptions to `@parcel/watcher`. The Android ARMv7 addon now cross-compiles. Device tests must still verify recursive create/update/delete events, ignore rules, cancellation, and deleted-directory behavior.
-
-## Remaining integration gates
-
-1. Extend the upstream Node target descriptor and Node asset collector for Android ARMv7 / Bionic.
-2. Supply and verify the ARMv7 OpenTUI library, Parcel watcher addon, PTY daemon, and Node-PTY adapter/launcher integration.
-3. Resolve FFF binary and FFF FFI behavior without silently removing file-search functionality; verify Photon WASM and all runtime assets.
-4. Build the complete Node ESM CLI bundle and run `--version`, `--help`, startup, and feature smoke tests under Android ARMv7 Node.
-5. Test on the actual Redmi 9A: terminal input/output/resize, persistent sessions, recursive watching, Skills, MCP, Plugins, LSP, Providers, Agents, and Sessions.
+1. The combined package workflow must download and verify the latest successful OpenTUI, Parcel, PTY, and Ghostty artifacts.
+2. Confirm the packaged OpenTUI, Node-API addon, Parcel watcher, and persistent daemon are all ELF32 ARM / Android Bionic-compatible and load on the phone.
+3. Confirm the ripgrep fallback is available on Termux and Photon WASM assets resolve correctly.
+4. Run on-device tests for terminal input/output/resize, persistent sessions, recursive file watching, Skills, MCP, Plugins, LSP, Providers, Agents, and Sessions.
+5. Fix every device/runtime failure before calling the package a release.
 
 ## Release decision
 
-Do not call the current native test bundle a final installer. Do not claim full feature parity or publish a release until the Android ARMv7 Node bundle and the on-device runtime gates above pass.
+The Node ESM CLI bundle is built, but the combined package and on-device feature parity are not yet verified. Do not call the candidate a final installer until the remaining gates pass.
