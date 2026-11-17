@@ -112,6 +112,44 @@ jobs:
           exec "$NODE_BIN" --experimental-ffi --use-system-ca --disable-warning=ExperimentalWarning "$ROOT/opencode.mjs" "$@"
           EOF
           chmod 0755 "$ROOT/opencode"
+          cat > "$ROOT/install.sh" <<'INSTALL'
+          #!/data/data/com.termux/files/usr/bin/bash
+          set -euo pipefail
+          HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+          PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+          NODE_BIN="${NODE_BIN:-$PREFIX/bin/node}"
+          test -x "$NODE_BIN" || { echo "Termux Node.js 26.4.0+ is required." >&2; exit 1; }
+          "$NODE_BIN" -e 'const [a,b]=process.versions.node.split(".").map(Number); if(a<26||(a===26&&b<4)) process.exit(1)' || {
+            echo "Node.js 26.4.0 or later is required." >&2; exit 1;
+          }
+          "$NODE_BIN" -e 'if(process.arch!=="arm"||process.platform!=="android"){console.error("Expected Android ARMv7 Node; got "+process.platform+"/"+process.arch);process.exit(1)}'
+          if ! command -v rg >/dev/null 2>&1; then
+            command -v pkg >/dev/null 2>&1 || { echo "Install ripgrep with: pkg install ripgrep" >&2; exit 1; }
+            pkg install -y ripgrep
+          fi
+          DEST="$PREFIX/lib/opencode-armv7"
+          mkdir -p "$DEST"
+          cp -f "$HERE/opencode.mjs" "$DEST/"
+          rm -rf "$DEST/assets" "$DEST/native"
+          cp -a "$HERE/assets" "$HERE/native" "$DEST/"
+          cat > "$PREFIX/bin/opencode" <<'LAUNCH'
+          #!/data/data/com.termux/files/usr/bin/bash
+          set -euo pipefail
+          PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+          NODE_BIN="${NODE_BIN:-$PREFIX/bin/node}"
+          ROOT="$PREFIX/lib/opencode-armv7"
+          export OPENTUI_LIB_PATH="$ROOT/native/libopentui-android-armv7.so"
+          export OPENCODE_TERMUX_PTY_PATH="$ROOT/native/termux-pty-android-armv7.node"
+          export OPENCODE_PARCEL_WATCHER_PATH="$ROOT/native/watcher.node"
+          export OPENCODE_PTY_BIN="$ROOT/native/opencode-pty"
+          export OPENCODE_PHOTON_WASM_PATH="$ROOT/assets/@silvia-odwyer/photon-node/photon_rs_bg.wasm"
+          export LD_LIBRARY_PATH="$ROOT/native${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          exec "$NODE_BIN" --experimental-ffi --use-system-ca --disable-warning=ExperimentalWarning "$ROOT/opencode.mjs" "$@"
+          LAUNCH
+          chmod 0755 "$PREFIX/bin/opencode"
+          echo "Installed OpenCode ARMv7 CLI. Run: opencode --help"
+          INSTALL
+          chmod 0755 "$ROOT/install.sh"
           cat > "$ROOT/README-TERMUX.txt" <<'EOF'
           G.I KO KO OpenCode - Android ARMv7 Node CLI bundle candidate
           Target: Termux / Android Bionic / ARMv7 / Node.js 26.4.0
