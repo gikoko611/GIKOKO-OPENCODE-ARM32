@@ -98,3 +98,27 @@ Node: 26.4.0; arch: arm; platform: android
 ```
 
 Therefore Node v26.4.0 on this 32-bit Android/Termux device successfully imports `node:ffi`, loads the Android ARMv7 smoke library, and passes the i32/u64/f64/pointer call tests. The FFI API is still experimental. The next gate is to load and call the actual OpenTUI ARMv7 library through OpenTUI's generated bindings; basic FFI smoke success alone does not prove full TUI rendering.
+
+
+## Actual Redmi 9A device-side FFI smoke test passed (2026-11-17)
+
+The user extracted the CI artifact and ran `bash test-node-ffi-armv7.sh` on the target Termux device. Returned terminal output:
+
+```text
+Node: v26.4.0
+Arch: arm
+PASS: Node node:ffi loaded Android ARMv7 .so
+PASS: i32, u64, f64 and pointer argument/return calls
+Node: 26.4.0; arch: arm; platform: android
+```
+
+This confirms all of the following on the actual 32-bit Android/Termux device:
+- Node v26.4.0 is executable and reports `process.arch === "arm"`.
+- The runtime platform is `android`.
+- The experimental `node:ffi` module loads.
+- An Android ARMv7 native shared library is loaded successfully.
+- i32, u64, f64, and pointer arguments/return values work in native calls.
+
+The warning about experimental FFI is expected and does not indicate test failure.
+
+The test used the small dedicated FFI smoke library, **not** `libopentui-android-armv7.so`. Therefore the OpenTUI generated ABI table, all 366 symbols, struct layouts, callbacks, native scene lifecycle, and actual terminal rendering are still unverified. The next engineering step is an OpenTUI-specific FFI integration harness and device test.
