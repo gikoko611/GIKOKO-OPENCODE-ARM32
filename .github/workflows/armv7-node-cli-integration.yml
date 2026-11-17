@@ -70,9 +70,29 @@ jobs:
             workflow="$1"
             artifact="$2"
             dest="$3"
-            run_id="$(gh run list --workflow "$workflow" --branch "$GITHUB_REF_NAME" --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')"
-            test -n "$run_id" || { echo "No successful run found: $workflow" >&2; exit 1; }
-            echo "Downloading $artifact from $workflow run $run_id"
+            run_id=""
+            echo "Waiting for $workflow on exact source SHA $GITHUB_SHA"
+            for attempt in $(seq 1 90); do
+              runs="$(gh run list --workflow "$workflow" --branch "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --limit 10 --json databaseId,status,conclusion,headSha)"
+              latest="$(jq -c --arg sha "$GITHUB_SHA" 'map(select(.headSha == $sha)) | sort_by(.databaseId) | last // empty' <<< "$runs")"
+              if [ -n "$latest" ]; then
+                status="$(jq -r '.status' <<< "$latest")"
+                conclusion="$(jq -r '.conclusion // empty' <<< "$latest")"
+                candidate="$(jq -r '.databaseId' <<< "$latest")"
+                if [ "$status" = "completed" ] && [ "$conclusion" = "success" ]; then
+                  run_id="$candidate"
+                  break
+                fi
+                if [ "$status" = "completed" ] && [ "$conclusion" != "success" ]; then
+                  echo "$workflow failed for $GITHUB_SHA: $conclusion" >&2
+                  exit 1
+                fi
+              fi
+              echo "  waiting ($attempt/90)"
+              sleep 30
+            done
+            test -n "$run_id" || { echo "Timed out waiting for same-SHA success: $workflow" >&2; exit 1; }
+            echo "Downloading $artifact from same-SHA run $run_id"
             gh run download "$run_id" --name "$artifact" --dir "$dest"
           }
           download_artifact armv7-opentui-cross-build.yml GIKOKO-OPENCODE-ARM32-NATIVE-TEST-BUNDLE "$RUNNER_TEMP/native-artifacts/opentui"
