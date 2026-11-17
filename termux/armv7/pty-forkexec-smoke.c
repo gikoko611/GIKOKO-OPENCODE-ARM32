@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include <errno.h>
+#include <fcntl.h>
 #include <poll.h>
 #include <pty.h>
 #include <signal.h>
@@ -38,6 +39,16 @@ int main(void) {
               "printf 'PTY_CHILD_OK\\n'; stty size; exit 7",
               (char *)NULL);
         _exit(127);
+    }
+
+    /* poll() must remain authoritative: drain only currently available bytes. */
+    int flags = fcntl(master, F_GETFL);
+    if (flags < 0 || fcntl(master, F_SETFL, flags | O_NONBLOCK) < 0) {
+        perror("fcntl(O_NONBLOCK) on PTY master");
+        kill(pid, SIGKILL);
+        waitpid(pid, &status, 0);
+        close(master);
+        return 17;
     }
 
     long long deadline = now_ms() + 7000;
