@@ -397,20 +397,18 @@ jobs:
           path = Path("src/clipboard/host.zig")
           source = path.read_text()
 
-          old = '''extern "c" fn pthread_mach_thread_np(thread: std.c.pthread_t) std.c.mach_port_t;
-          extern "c" fn pthread_tryjoin_np(thread: std.Thread.Handle, result: ?*?*anyopaque) c_int;
-          extern "c" fn pthread_peekjoin_np(thread: std.Thread.Handle, result: ?*?*anyopaque) c_int;
-          '''
-          new = '''extern "c" fn pthread_mach_thread_np(thread: std.c.pthread_t) std.c.mach_port_t;
-          // GNU pthread join extensions are unavailable in Android Bionic.
-          const linux_thread_api = if (builtin.abi == .android) struct {} else struct {
-              extern "c" fn pthread_tryjoin_np(thread: std.Thread.Handle, result: ?*?*anyopaque) c_int;
-              extern "c" fn pthread_peekjoin_np(thread: std.Thread.Handle, result: ?*?*anyopaque) c_int;
-          };
-          '''
-          if source.count(old) != 1:
-              raise SystemExit("host.zig: GNU pthread declaration block mismatch")
-          source = source.replace(old, new, 1)
+          # Do not declare GNU pthread_tryjoin_np/peekjoin_np at all.
+          # The only thread joined here is waylandBmpWorker, which publishes
+          # worker_finished with release semantics before it exits.
+          begin = source.index("extern \\"c\\" fn pthread_mach_thread_np")
+          finish = source.index("\\npub const Operation = struct {", begin)
+          replacement = """fn tryJoinThread(thread: std.Thread, worker_finished: *const std.atomic.Value(bool)) bool {
+              if (!worker_finished.load(.acquire)) return false;
+              thread.join();
+              return true;
+          }
+          """
+          source = source[:begin] + replacement + source[finish:]
 
           old = "    thread: ?std.Thread = null,\n"
           new = old + "    worker_finished: std.atomic.Value(bool) = .init(false),\n"
