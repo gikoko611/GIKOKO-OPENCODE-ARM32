@@ -136,13 +136,11 @@ static napi_value spawn_pty(napi_env env, napi_callback_info info) {
   ws.ws_row = (unsigned short)rows;
   ws.ws_col = (unsigned short)cols;
   int exec_error[2];
-  if (pipe(exec_error) != 0) {
+  if (pipe2(exec_error, O_CLOEXEC) != 0) {
     int saved = errno;
     free_strings(env_items, env_count); free_strings(child_argv, count + 1); free(cwd); free(file);
     return fail(env, strerror(saved));
   }
-  (void)fcntl(exec_error[1], F_SETFD, FD_CLOEXEC);
-
   int master = -1;
   pid_t pid = forkpty(&master, NULL, NULL, &ws);
   if (pid < 0) {
