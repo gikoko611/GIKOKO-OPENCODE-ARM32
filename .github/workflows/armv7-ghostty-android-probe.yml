@@ -68,7 +68,7 @@ jobs:
           LIB="$GITHUB_WORKSPACE/ghostty-install/lib/libghostty-vt.a"
           test -s "$LIB"
           file "$LIB"
-          llvm-ar t "$LIB" | awk 'NR <= 20 { print }'
+          "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar" t "$LIB" | awk 'NR <= 20 { print }'
           {
             echo "## Ghostty Android ARMv7 probe"
             echo "- Pinned Ghostty revision: $GHOSTTY_REVISION"
