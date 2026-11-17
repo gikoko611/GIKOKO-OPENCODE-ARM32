@@ -19,13 +19,20 @@ The following files exist in upstream OpenCode 2.3.0:
 
 These existing Node branches mean a Node port should be based on upstream's Node runtime implementation, not by rewriting all Bun APIs blindly.
 
+## Confirmed OpenTUI v0.8.3 target gap (checked 2026-11-17)
+
+The pinned OpenTUI version used by this project is 0.8.3. Its upstream `packages/native/build.zig` defines exactly eight `SUPPORTED_TARGETS`: Linux x86_64/aarch64 (glibc and musl), macOS x86_64/aarch64, and Windows x86_64/aarch64. It does **not** define Android, Linux ARMv7, or a 32-bit ARM target. The v0.8.3 native README documents the Zig build flow and `-Dlibrary-target`, but that option only selects a target from the explicit supported-target list. Therefore an ARMv7 Android renderer requires a maintained source patch/port and a verified Bionic toolchain; changing the package name or target metadata is insufficient.
+
+The same-version `@opentui/core` package lists only the eight platform packages above as optional dependencies. No Android ARMv7 native package is published in that manifest. The compatibility audit run also returned HTTP 404 for `@androidtui/core-android-arm` and `@androidtui/core-android-armv7`.
+
 ## Confirmed blockers / gaps
 
 1. **CLI build target**: upstream's `build-node.ts` target matrix excludes `arm` and Android. The SEA build target cannot simply be relabeled as ARMv7. A Termux distribution may need to ship the JS bundle plus the Termux Node runtime, rather than a Node SEA executable.
 2. **OpenTUI**: OpenCode's TUI still depends on `@opentui/core`, `@opentui/solid`, and `@opentui/keymap`. A Node runtime alone does not supply the Android ARMv7 Zig/native renderer. The existing Android native package pin in this repo is ARM64-only.
 3. **PTY**: the Node branch uses `@lydell/node-pty`; its native addon must be built and tested for Android Bionic ARMv7. The current repo's known PTY release assets are AArch64.
-4. **Other native dependencies**: `@parcel/watcher`, `@ff-labs/fff-node`, `@silvia-odwyer/photon-node`, and any FFI/native packages must be checked for ARMv7 Android availability or a safe, tested fallback.
-5. **Runtime validation**: static ELF inspection of the Termux Node package does not test its dynamic linker dependencies, Node's experimental FFI, child processes, signals, terminal input, or native addons on the actual phone.
+4. **npm package probe (Run 44003028456)**: the registry returned latest releases for `@lydell/node-pty` (1.2.0-beta.18), `@parcel/watcher` (2.6.0), `@ff-labs/fff-node` (0.11.0), and `@silvia-odwyer/photon-node` (0.3.4). This confirms package existence only; it does not confirm Android Bionic ARMv7 prebuilds or successful source builds.
+5. **Other native dependencies**: `@parcel/watcher`, `@ff-labs/fff-node`, `@silvia-odwyer/photon-node`, and any FFI/native packages must be checked for ARMv7 Android availability or a safe, tested fallback.
+6. **Runtime validation**: static ELF inspection of the Termux Node package does not test its dynamic linker dependencies, Node's experimental FFI, child processes, signals, terminal input, or native addons on the actual phone.
 
 ## Recommended implementation sequence
 
