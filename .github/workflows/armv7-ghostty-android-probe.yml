@@ -40,7 +40,7 @@ jobs:
           echo "NDK_HOME=$NDK" >> "$GITHUB_ENV"
           echo "ANDROID_NDK=$NDK" >> "$GITHUB_ENV"
           test -x "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi29-clang"
-          find "$NDK/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/arm-linux-androideabi" -maxdepth 2 -type f | head -30
+          find "$NDK/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/arm-linux-androideabi" -maxdepth 2 -type f -print | awk 'NR <= 30 { print }'
 
       - name: Fetch exact Ghostty revision used by OpenCode v2.3.0
         shell: bash
@@ -68,7 +68,7 @@ jobs:
           LIB="$GITHUB_WORKSPACE/ghostty-install/lib/libghostty-vt.a"
           test -s "$LIB"
           file "$LIB"
-          llvm-ar t "$LIB" | head -20
+          llvm-ar t "$LIB" | awk 'NR <= 20 { print }'
           {
             echo "## Ghostty Android ARMv7 probe"
             echo "- Pinned Ghostty revision: $GHOSTTY_REVISION"
