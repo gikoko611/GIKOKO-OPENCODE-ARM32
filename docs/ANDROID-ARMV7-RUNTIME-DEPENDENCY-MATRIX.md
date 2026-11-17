@@ -35,3 +35,9 @@ The Node prelude also hardcodes asset paths and environment variables for those 
 7. Only then package the final Termux installer and claim parity.
 
 A backend fallback must state its semantics and performance characteristics. In particular, a polling filesystem watcher may preserve event delivery but can cost CPU and battery on a low-memory phone; it must be measured and cancellable before adoption.
+
+## Termux system tools (not bundled native assets)
+
+FFmpeg is an external command-line runtime dependency, not one of OpenCode's Node native addons. The Redmi 9A Termux environment already provides it, so the final installer should detect and use `$PREFIX/bin/ffmpeg` (or the first `ffmpeg` found on `PATH`) rather than download or bundle a second FFmpeg binary. The installer should report a clear optional-dependency warning if it is absent; it must not fail the core OpenCode CLI install solely because FFmpeg is missing.
+
+The CI log warning about missing `x86_64-linux` / `x86_64-linux-musl` FFmpeg build assets belongs to upstream desktop Linux build targets. It is not evidence of an Android ARMv7 link failure and is not a reason to add an x86_64 FFmpeg artifact to the Termux package. Any OpenCode feature that invokes FFmpeg still needs a runtime smoke test against the Termux executable.
