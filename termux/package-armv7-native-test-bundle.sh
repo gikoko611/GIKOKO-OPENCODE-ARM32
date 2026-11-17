@@ -49,8 +49,8 @@ The tests use the colocated native libraries by default. Keep metadata/
 when reporting failures.
 EOF
 (
-  cd "$OUT"
-  rm -f GIKOKO-OPENCODE-ARM32-NATIVE-TEST-BUNDLE.zip
-  zip -qr GIKOKO-OPENCODE-ARM32-NATIVE-TEST-BUNDLE.zip -C stage .
+  rm -f "$OUT/GIKOKO-OPENCODE-ARM32-NATIVE-TEST-BUNDLE.zip"
+  cd "$STAGE"
+  zip -qr "$OUT/GIKOKO-OPENCODE-ARM32-NATIVE-TEST-BUNDLE.zip" .
 )
 echo "$OUT/GIKOKO-OPENCODE-ARM32-NATIVE-TEST-BUNDLE.zip"
