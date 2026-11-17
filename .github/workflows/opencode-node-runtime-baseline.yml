@@ -1,0 +1,65 @@
+name: OpenCode Node runtime baseline (not ARMv7 release)
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/opencode-node-runtime-baseline.yml"
+      - "docs/ANDROID-ARMV7-FULL-CLI-FEASIBILITY-AUDIT.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  node-bundle-baseline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout port repository
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 26.4.0
+
+      - name: Fetch pinned upstream OpenCode
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch v2.3.0 https://github.com/anomalyco/opencode.git upstream-opencode
+          test -s upstream-opencode/packages/cli/script/build-node.ts
+          test -s upstream-opencode/packages/cli/src/node/target.ts
+          grep -q 'const NODE_VERSION = "26.4.0"' upstream-opencode/packages/cli/script/build-node.ts
+
+      - name: Install upstream workspace dependencies
+        working-directory: upstream-opencode
+        run: bun install --frozen-lockfile
+
+      - name: Build and verify upstream Node ESM bundle
+        working-directory: upstream-opencode/packages/cli
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --version
+          bun --version
+          bun run script/build-node.ts --bundle-only --skip-install --outdir=dist/node-baseline
+          test -s dist-node/opencode.mjs
+          node --experimental-ffi --use-system-ca --disable-warning=ExperimentalWarning dist-node/opencode.mjs --version
+          node --experimental-ffi --use-system-ca --disable-warning=ExperimentalWarning dist-node/opencode.mjs --help >/dev/null
+          sha256sum dist-node/opencode.mjs | tee node-bundle-sha256.txt
+
+      - name: Upload Node bundle baseline (x64 host only)
+        uses: actions/upload-artifact@v4
+        with:
+          name: OPENCODE-NODE-BUNDLE-BASELINE-NOT-ARMV7
+          path: |
+            upstream-opencode/packages/cli/dist-node/opencode.mjs
+            upstream-opencode/packages/cli/node-bundle-sha256.txt
+          if-no-files-found: error
+          retention-days: 7
