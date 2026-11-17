@@ -16,9 +16,11 @@ jobs:
       - name: Check upstream Bun Android release architectures
         id: bun
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          curl -fsSL https://api.github.com/repos/oven-sh/bun/releases/latest -o bun-release.json
+          curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" https://api.github.com/repos/oven-sh/bun/releases/latest -o bun-release.json
           python3 - <<'PY'
           import json, os
           d=json.load(open("bun-release.json"))
@@ -49,10 +51,12 @@ jobs:
       - name: Check ARMv7 PTY assets
         id: pty
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          curl -fsSL https://api.github.com/repos/bd-loser/bun-termux/releases/tags/bun-pty-v0.4.11 -o /tmp/bun-pty.json
-          curl -fsSL https://api.github.com/repos/bd-loser/bun-termux/releases/tags/opencode-pty-v0.2.0 -o /tmp/opencode-pty.json
+          curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" https://api.github.com/repos/bd-loser/bun-termux/releases/tags/bun-pty-v0.4.11 -o /tmp/bun-pty.json
+          curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" https://api.github.com/repos/bd-loser/bun-termux/releases/tags/opencode-pty-v0.2.0 -o /tmp/opencode-pty.json
           python3 - <<'PY'
           import json, os
           docs=[json.load(open(p)) for p in ("/tmp/bun-pty.json","/tmp/opencode-pty.json")]
