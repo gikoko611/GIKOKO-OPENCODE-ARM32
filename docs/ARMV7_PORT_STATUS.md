@@ -19,6 +19,10 @@ The current build pipeline is an AArch64/Bionic pipeline copied from the upstrea
 
 Changing architecture strings, Debian package metadata, or runner labels alone would produce a broken package. The release workflow must remain AArch64-only until every required runtime/native component has an actual ARMv7 build and passes device tests.
 
+## Confirmed OpenTUI ARMv7 blocker
+
+The pinned OpenTUI 0.8.3 native Zig build explicitly lists eight supported targets: Linux x86_64/aarch64 (glibc/musl), macOS x86_64/aarch64, and Windows x86_64/aarch64. It does not include Android or 32-bit ARM. Its published core package also has no Android ARMv7 optional native package. A real ARMv7 port therefore needs a source-level native renderer port plus Android/Bionic cross-linking, not a renamed package. Details and source references are recorded in [Node compatibility audit](ARMV7_NODE_COMPATIBILITY_AUDIT.md).
+
 ## Alternative runtime investigation
 
 A Node.js-based route is now being evaluated because OpenTUI documents Node.js 26.4.0+ with ESM and `--experimental-ffi`, and Termux publishes a 32-bit `arm` Node.js package. This does not establish OpenCode compatibility: OpenCode's Bun-specific APIs/build pipeline, an Android ARMv7 OpenTUI Zig renderer, and a PTY backend still require implementation and on-device tests. See [ARMv7 Node.js runtime investigation](ARMV7_NODE_RUNTIME_PATH.md).
