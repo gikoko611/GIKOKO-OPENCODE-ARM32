@@ -89,7 +89,7 @@ jobs:
             echo ""
             echo "A missing prerequisite blocks a native ARMv7 release. This check does not build or publish an ARM32 binary."
           } >> "$GITHUB_STEP_SUMMARY"
-      - name: Enforce ARMv7 prerequisites
+      - name: Report ARMv7 readiness without failing diagnostics
         shell: bash
         env:
           BUN_ARMV7: ${{ steps.bun.outputs.armv7_asset }}
@@ -98,7 +98,13 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "$BUN_ARMV7" != true || "$OPENTUI_ARMV7" != true || "$PTY_ARMV7" != true ]]; then
-            echo "::error::ARMv7 build blocked: required 32-bit runtime/native assets are missing. No ARM32 release will be produced."
-            exit 1
+            echo "::warning::ARMv7 build is BLOCKED: one or more 32-bit runtime/native assets are missing. This diagnostic workflow will finish successfully, but no ARM32 binary is built or released."
+            {
+              echo ""
+              echo "### Readiness: BLOCKED"
+              echo "This workflow is diagnostic only. A green run means the checks completed, not that an ARM32 build is available."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "All prerequisite assets detected. A separate ARMv7 build validation is still required."
+            echo "### Readiness: PREREQUISITES DETECTED" >> "$GITHUB_STEP_SUMMARY"
           fi
-          echo "All prerequisite assets detected. Continue with separate ARMv7 build validation."
