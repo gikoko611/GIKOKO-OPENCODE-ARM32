@@ -77,6 +77,7 @@ jobs:
         shell: bash
         env:
           GHOSTTY_SOURCE_DIR: ${{ github.workspace }}/ghostty
+          OPENCODE_ZIG_CPU: baseline+soft_float
           CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER: /usr/local/lib/android/sdk/ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi29-clang
         run: |
           set -euo pipefail
