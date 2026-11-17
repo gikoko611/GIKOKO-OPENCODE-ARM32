@@ -27,4 +27,4 @@ References:
 
 ## Current decision
 
-This is an **investigation path, not a supported build yet**. Do not change the existing AArch64 release pipeline or label any artifact ARMv7 until the runtime and native renderer pass on a real 32-bit Android/Termux target.
+This is an **investigation path, not a supported build yet**. The upstream OpenCode 2.3.0 source does contain a Node runtime implementation and a Node CLI build script, but the supported build target matrix omits Android and 32-bit ARM. See [OpenCode Node compatibility audit](ARMV7_NODE_COMPATIBILITY_AUDIT.md). Do not change the existing AArch64 release pipeline or label any artifact ARMv7 until the runtime and native renderer pass on a real 32-bit Android/Termux target.
