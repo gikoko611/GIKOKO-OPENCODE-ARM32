@@ -67,3 +67,19 @@ The Node FFI API is experimental and requires `--experimental-ffi`; official Nod
 ## Current decision
 
 This is an **investigation path, not a supported build yet**. The upstream OpenCode 2.3.0 source does contain a Node runtime implementation and a Node CLI build script, but the supported build target matrix omits Android and 32-bit ARM. See [OpenCode Node compatibility audit](ARMV7_NODE_COMPATIBILITY_AUDIT.md). Do not change the existing AArch64 release pipeline or label any artifact ARMv7 until the runtime and native renderer pass on a real 32-bit Android/Termux target.
+
+
+## Latest artifact inspected (2026-11-17)
+
+The newest CI run is [44029335974](https://github.com/gikoko611/GIKOKO-OPENCODE-ARM32/actions/runs/44029335974) (commit `8ffacf0307fc64b06df12d9de117481d6f5592ef`, success). Its artifact is [opentui-android-armv7-experiment](https://github.com/gikoko611/GIKOKO-OPENCODE-ARM32/actions/runs/44029335974/artifacts/14304174110).
+
+Artifact ID: `14304174110`; size: 7,945,611 bytes; expiry: 2026-12-01. Direct ZIP inspection confirmed these handoff files exist:
+- `libopentui-android-armv7.so`
+- `libnode-ffi-smoke.so`
+- `node-ffi-smoke.mjs`
+- `test-node-ffi-armv7.sh`
+- `node-ffi-smoke-elf.txt` and `node-ffi-smoke-dynamic.txt`
+
+Both `.so` files are ELF32 ARM EABI5 soft-float Android API 29 libraries. The OpenTUI library depends on Bionic `libc.so`, `libm.so`, and `libdl.so`; the smaller smoke library depends on `libc.so` and `libdl.so`. This is build and binary-inspection evidence only, not a successful FFI runtime test.
+
+Run `bash test-node-ffi-armv7.sh` inside the Redmi 9A's 32-bit Termux environment after extracting the artifact. The script requires Node >=26.4.0, `process.arch === "arm"`, and the `--experimental-ffi` feature. Keep the exact terminal output for the next compatibility decision.
