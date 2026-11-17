@@ -600,7 +600,7 @@ jobs:
           grep -Eq 'Machine:.*ARM' "$GITHUB_WORKSPACE/termux-pty-napi-elf-header.txt"
           grep -Eq 'Version5 EABI' "$GITHUB_WORKSPACE/termux-pty-napi-elf-header.txt"
           grep -Eq 'soft-float ABI' "$GITHUB_WORKSPACE/termux-pty-napi-elf-header.txt"
-          if grep -Eqi 'libc\\.so\\.6|ld-linux|libstdc\\+\\+\\.so' "$GITHUB_WORKSPACE/termux-pty-napi-dynamic-section.txt"; then
+          if grep -Eqi 'libc\.so\.6|ld-linux|libstdc\+\+\.so' "$GITHUB_WORKSPACE/termux-pty-napi-dynamic-section.txt"; then
             echo "ERROR: non-Android runtime dependency found in Node-API PTY addon" >&2
             exit 1
           fi
