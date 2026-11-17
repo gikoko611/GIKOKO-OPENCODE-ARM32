@@ -15,12 +15,19 @@ type NativePty = {
 }
 
 const require = createRequire(import.meta.url)
-const native = require(
-  process.env.OPENCODE_TERMUX_PTY_PATH ??
-    "/data/data/com.termux/files/usr/lib/opencode/termux-pty-android-armv7.node",
-) as NativePty
+
+// Load the Android-only addon only when a terminal is actually spawned.
+// This keeps --version, --help, server startup and non-interactive commands
+// usable on host-side bundle verification and avoids eager native loading.
+function loadNative(): NativePty {
+  return require(
+    process.env.OPENCODE_TERMUX_PTY_PATH ??
+      "/data/data/com.termux/files/usr/lib/opencode/termux-pty-android-armv7.node",
+  ) as NativePty
+}
 
 function spawnPty(file: string, args: string[], opts: Opts): Proc {
+  const native = loadNative()
   const env = Object.fromEntries(
     Object.entries(opts.env ?? process.env).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
   )
