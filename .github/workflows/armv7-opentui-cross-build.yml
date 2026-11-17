@@ -64,6 +64,51 @@ jobs:
           test -s opentui/packages/native/src/vendor/zig-deps.tar.gz
           sha256sum opentui/packages/native/src/vendor/zig-deps.tar.gz | tee opentui-vendor-sha256.txt
 
+      - name: Patch OpenTUI translate-c include paths for Android
+        working-directory: opentui/packages/native
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("build.zig")
+          source = path.read_text()
+          start = source.index("fn addTranslatedCImports(")
+          end = source.index("\nfn addContextABIHeader(", start)
+          block = source[start:end]
+
+          additions = {
+              '    miniaudio_translate.addIncludePath(b.path("src"));':
+                  '    if (b.graph.environ_map.get("ANDROID_SYSROOT")) |sysroot| {\n'
+                  '        miniaudio_translate.addIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/include/arm-linux-androideabi" }) });\n'
+                  '        miniaudio_translate.addIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/include" }) });\n'
+                  '    }\n'
+                  '    miniaudio_translate.addIncludePath(b.path("src"));',
+              '    yoga_translate.addIncludePath(yoga_dep.path(""));':
+                  '    if (b.graph.environ_map.get("ANDROID_SYSROOT")) |sysroot| {\n'
+                  '        yoga_translate.addIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/include/arm-linux-androideabi" }) });\n'
+                  '        yoga_translate.addIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/include" }) });\n'
+                  '    }\n'
+                  '    yoga_translate.addIncludePath(yoga_dep.path(""));',
+              '    module.addImport("context_abi_c", header.createModule());':
+                  '    if (b.graph.environ_map.get("ANDROID_SYSROOT")) |sysroot| {\n'
+                  '        header.addIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/include/arm-linux-androideabi" }) });\n'
+                  '        header.addIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/include" }) });\n'
+                  '    }\n'
+                  '    module.addImport("context_abi_c", header.createModule());'
+          }
+
+          for old, new in additions.items():
+              if block.count(old) != 1:
+                  raise SystemExit(f"Expected exactly one occurrence: {old}")
+              block = block.replace(old, new, 1)
+
+          path.write_text(source[:start] + block + source[end:])
+          print("Patched all three OpenTUI translate-c modules with Android NDK headers.")
+          PY
+          grep -n -A5 -B2 'ANDROID_SYSROOT' build.zig
+
       - name: Prepare vendored Zig dependencies
         working-directory: opentui/packages/native
         shell: bash
