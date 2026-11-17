@@ -1,54 +1,43 @@
 # ARMv7 / 32-bit Android port status
 
 ## Target device
-
 - Android 10 / API 29
-- Termux on 32-bit ARM userspace
-- ABI: `armeabi-v7a`
-- ELF target: ELF32, little-endian ARM (EABI5, `e_machine=40`)
-- Do not accept AArch64 binaries (`e_machine=183`) as ARMv7 output.
+- Termux on 32-bit ARM userspace, ABI `armeabi-v7a`
+- Required output: ELF32 little-endian ARM EABI5 (`e_machine=40`)
+- AArch64 (`e_machine=183`) is not acceptable.
 
-## Current state: blocked at runtime prerequisites
+## Current state: not yet a working ARM32 port
 
-The current build pipeline is an AArch64/Bionic pipeline copied from the upstream `bd-loser/opencode-bionic` layout. It is not an ARMv7 build yet. In particular:
+The current release pipeline remains AArch64-oriented. Keep it unchanged until all runtime/native components are built for ARMv7 and pass device tests.
 
-1. The pinned `bun-termux` runtime package is named for `aarch64` and the current Bun-for-Termux project documents AArch64 support, not ARMv7.
-2. The pinned OpenTUI Android native package is `@androidtui/core-android-arm64`; it is not an ARMv7 shared library.
-3. The PTY shared library and PTY service assets are AArch64.
-4. CI runs an AArch64 Termux Docker image and validates 64-bit ELF machine type.
+## Confirmed CI evidence (2026-11-17)
 
-Changing architecture strings, Debian package metadata, or runner labels alone would produce a broken package. The release workflow must remain AArch64-only until every required runtime/native component has an actual ARMv7 build and passes device tests.
+- Termux Node.js ARM package preflight succeeded (run `43999676467`): package checksum verified and executable identified as ELF32 ARM EABI5. Static package evidence only; not a runtime test on the phone.
+- Node compatibility audit succeeded (run `44004450476`): registry probes found candidate packages, but did not establish Android Bionic ARMv7 prebuilds or runtime compatibility.
+- OpenTUI custom-target experiment failed (run `44004450442`). Zig 0.17.0 and OpenTUI v0.8.3 source/dependencies were fetched. Compilation failed in three `zig translate-c -lc` steps because the cross-build resolved Ubuntu host glibc header `/usr/include/x86_64-linux-gnu/gnu/stubs.h`, which tried to include missing `gnu/stubs-32.h`. No OpenTUI ARMv7 shared library was produced; the uploaded artifact is diagnostic only.
+- The attempted command was `zig build -Dlibrary-target=arm-linux-android.29 -Doptimize=ReleaseFast`. The custom target was accepted far enough to start compilation, but Android/Bionic headers and linking were not validated.
 
-## OpenTUI Android ARMv7 cross-build experiment
+Workflow: [ARMv7 OpenTUI native cross-build experiment](../.github/workflows/armv7-opentui-cross-build.yml).
 
-A GitHub Actions experiment now attempts the custom Zig target `arm-linux-android.29` against the pinned OpenTUI v0.8.3 source without changing upstream's official target matrix. It prepares the vendored Zig dependencies, cross-compiles the native library, then verifies ELF32/ARM and rejects glibc linkage. Workflow: [ARMv7 OpenTUI native cross-build experiment](../.github/workflows/armv7-opentui-cross-build.yml). This is an experiment only; even a successful cross-build still needs Node FFI, PTY integration, and actual Android 10/Termux terminal tests.
+## OpenTUI target gap
 
-## Confirmed OpenTUI ARMv7 blocker
+OpenTUI v0.8.3 officially lists Linux x86_64/aarch64 (glibc/musl), macOS x86_64/aarch64, and Windows x86_64/aarch64. Android and ARMv7 are excluded. The custom-target experiment exposed a host-glibc header leak. The next attempt must configure an Android NDK/Bionic sysroot correctly; changing package metadata or renaming output is not a port.
 
-The pinned OpenTUI 0.8.3 native Zig build explicitly lists eight supported targets: Linux x86_64/aarch64 (glibc/musl), macOS x86_64/aarch64, and Windows x86_64/aarch64. It does not include Android or 32-bit ARM. Its published core package also has no Android ARMv7 optional native package. A real ARMv7 port therefore needs a source-level native renderer port plus Android/Bionic cross-linking, not a renamed package. Details and source references are recorded in [Node compatibility audit](ARMV7_NODE_COMPATIBILITY_AUDIT.md).
+## Runtime investigation
 
-## Alternative runtime investigation
+A Node.js-based route remains under evaluation because Termux publishes a 32-bit ARM Node package and OpenCode has Node-specific import branches. This does not establish compatibility: CLI target support, OpenTUI renderer/FFI, PTY, and native npm dependencies still need implementation and device tests.
 
-A Node.js-based route is now being evaluated because OpenTUI documents Node.js 26.4.0+ with ESM and `--experimental-ffi`, and Termux publishes a 32-bit `arm` Node.js package. This does not establish OpenCode compatibility: OpenCode's Bun-specific APIs/build pipeline, an Android ARMv7 OpenTUI Zig renderer, and a PTY backend still require implementation and on-device tests. See [ARMv7 Node.js runtime investigation](ARMV7_NODE_RUNTIME_PATH.md).
+## Feature preservation
 
-Do not switch the release pipeline to Node.js or mark the port ready until every proof gate in that investigation passes.
+Keep upstream OpenCode agents, providers, tools, sessions, MCP, LSP, permissions, plugins, and server/web functionality. Isolate platform changes to runtime, TUI, PTY, packaging, and launch integration. Report unsupported optional integrations explicitly.
 
-## Feature-preservation policy
+## Required gates
+- [ ] ARMv7 Android/Bionic JavaScript runtime compatible with OpenCode APIs.
+- [ ] ARMv7 OpenTUI renderer and matching Node FFI.
+- [ ] ARMv7 PTY implementation or tested Termux-native fallback.
+- [ ] ARMv7 builds or tested fallbacks for required native npm dependencies.
+- [ ] Final package passes ELF32 ARM/EABI5 checks with no AArch64 objects.
+- [ ] Android 10 device tests: version, provider request, TUI, files, shell/PTY, MCP, LSP, sessions, and web UI where enabled.
+- [ ] Feature-parity review against pinned upstream OpenCode.
 
-The upstream 2.3.0 source includes Node-specific branches for SQLite, PTY, filesystem search, TLS, and TUI helpers. The Node route is now the preferred investigation path; see [Node compatibility audit](ARMV7_NODE_COMPATIBILITY_AUDIT.md). The port must retain upstream OpenCode source and its agent/provider/tool/session behavior. Platform work should be isolated to the runtime, native TUI, PTY, packaging, and launch integration. Do not remove MCP, LSP, provider integrations, tools, permissions, sessions, or web UI just to make a build pass.
-
-If a native dependency has no ARMv7 implementation, report it as blocked or implement a tested fallback. Never silently omit the feature.
-
-## Required implementation gates
-
-- [ ] A supported ARMv7 Android/Bionic JavaScript runtime compatible with OpenCode's Bun APIs, or a validated compatibility layer.
-- [ ] ARMv7 OpenTUI native renderer and matching JavaScript bindings.
-- [ ] ARMv7 PTY implementation and service, or a tested Termux-native PTY fallback.
-- [ ] ARMv7 builds/fallbacks for all required native npm dependencies (including file watching/search paths).
-- [ ] Build artifact passes `file` and ELF-header checks: ELF32 ARM, EABI5; no AArch64 objects.
-- [ ] Runtime tests on Android 10 ARMv7: version, provider request, TUI input/render, file read/write, shell/PTY, MCP, LSP, session persistence, and web UI where enabled.
-- [ ] Feature parity review against the pinned upstream OpenCode version.
-
-## Build policy
-
-GitHub Actions should first run the ARMv7 prerequisite preflight. Only after all gates are satisfied should a separate ARMv7 build/release workflow be enabled. Do not publish a placeholder or AArch64 binary under an ARM32 release name.
+Do not publish a placeholder or AArch64 binary under an ARM32 release name.
