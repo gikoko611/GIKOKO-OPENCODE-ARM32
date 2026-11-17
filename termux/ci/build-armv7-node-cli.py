@@ -36,8 +36,8 @@ replace_once(target, '  const fffPackage = `@ff-labs/fff-bin-${targetPlatform}-$
 replace_once(target, '  const fffFfiPackage = `@yuuang/ffi-rs-${targetPlatform}-${targetArch}${targetPlatform === "linux" ? "-gnu" : targetPlatform === "win32" ? "-msvc" : ""}`',
     '  const fffFfiPackage = targetPlatform === "android" ? "@gikoko/ffi-rs-android-armv7" : `@yuuang/ffi-rs-${targetPlatform}-${targetArch}${targetPlatform === "linux" ? "-gnu" : targetPlatform === "win32" ? "-msvc" : ""}`')
 
-# Only platform-independent files are collected by the ESM bundle. Native
-# Android assets are fetched from successful component CI artifacts later.
+# Collect portable Photon WASM/audio assets; native ARMv7 assets are pulled
+# from their separately verified GitHub Actions artifacts.
 data = assets.read_text()
 for line in [
     'import { getNodeAssets } from "@opentui/core/node-assets"\n',
@@ -77,16 +77,18 @@ if data.count(tail) != 1:
     raise SystemExit(f"{assets}: native asset tail count {data.count(tail)}")
 assets.write_text(data.replace(tail, "", 1))
 
-# Preserve explicit Termux runtime paths supplied by the launcher.
-for name, key in [
-    ("OPENCODE_NODE_PTY_PATH", "nodePtyEntryAsset"),
-    ("OPENCODE_PARCEL_WATCHER_PATH", "parcelWatcherAsset"),
-    ("OPENCODE_PHOTON_WASM_PATH", "photonWasmAsset"),
-    ("FFF_BINARY_PATH", "fffAsset"),
-    ("OPENCODE_FFF_FFI_PATH", "fffFfiAsset"),
-]:
-    old = f'process.env.{name} = __ocPath.join(__ocAssetRoot, ${{JSON.stringify(input.target.{key})}})'
-    new = f'process.env.{name} ??= __ocPath.join(__ocAssetRoot, ${{JSON.stringify(input.target.{key})}})'
+# Preserve launcher-provided native asset paths. Photon uses its module-level
+# asset key rather than a target property in upstream's Node prelude.
+expressions = [
+    ("OPENCODE_NODE_PTY_PATH", '${JSON.stringify(input.target.nodePtyEntryAsset)}'),
+    ("OPENCODE_PARCEL_WATCHER_PATH", '${JSON.stringify(input.target.parcelWatcherAsset)}'),
+    ("OPENCODE_PHOTON_WASM_PATH", '${JSON.stringify(photonWasmAsset)}'),
+    ("FFF_BINARY_PATH", '${JSON.stringify(input.target.fffAsset)}'),
+    ("OPENCODE_FFF_FFI_PATH", '${JSON.stringify(input.target.fffFfiAsset)}'),
+]
+for name, expression in expressions:
+    old = f"process.env.{name} = __ocPath.join(__ocAssetRoot, {expression})"
+    new = f"process.env.{name} ??= __ocPath.join(__ocAssetRoot, {expression})"
     replace_once(vite, old, new)
 
 adapter = repo / "termux/armv7/pty-termux.node.ts"
@@ -116,7 +118,6 @@ new = '''function spawnPty(file: string, args: string[], opts: Opts): Proc {
 if source.count(old) != 1:
     raise SystemExit("pty.node.ts: could not safely insert Android PTY adapter branch")
 pty.write_text(source.replace(old, new, 1))
-
 replace_once(watcher, '  if (process.platform === "linux") return "inotify"',
     '  if (process.platform === "linux" || process.platform === "android") return "inotify"')
 print("Android ARMv7 Node ESM target, Termux PTY adapter, and external native path overrides patched.")
