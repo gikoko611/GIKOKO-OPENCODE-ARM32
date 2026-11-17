@@ -100,6 +100,8 @@ jobs:
           grep -Eq 'soft-float ABI' "$GITHUB_WORKSPACE/node-ffi-smoke-elf.txt"
           cp "$GITHUB_WORKSPACE/termux/armv7/node-ffi-smoke.mjs" "$GITHUB_WORKSPACE/"
           cp "$GITHUB_WORKSPACE/termux/test-node-ffi-armv7.sh" "$GITHUB_WORKSPACE/"
+          test -s "$GITHUB_WORKSPACE/node-ffi-smoke.mjs"
+          test -s "$GITHUB_WORKSPACE/test-node-ffi-armv7.sh"
 
       - name: Fetch pinned OpenTUI source
         shell: bash
