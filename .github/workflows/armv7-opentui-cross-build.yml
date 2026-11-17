@@ -10,6 +10,8 @@ on:
       - ".github/workflows/armv7-opentui-cross-build.yml"
       - "termux/armv7/pty-termux.node.ts"
       - "termux/ci/apply-armv7-pty-adapter.sh"
+      - "termux/ci/audit-armv7-persistent-pty.sh"
+      - "termux/armv7/PERSISTENT-PTY-ARMV7-AUDIT.md"
       - "termux/ci/prepare-build-tree.sh"
       - "termux/armv7/node-runtime-smoke.mjs"
       - "termux/armv7/node-opentui-load-smoke.mjs"
@@ -644,6 +646,19 @@ jobs:
           echo "Verified adapter applies and bundles against pinned OpenCode v2.3.0 source."
           echo "- Android ARMv7 Node PTY adapter is wired to the upstream Node PTY entrypoint." >> "$GITHUB_STEP_SUMMARY"
           echo "- Native addon device execution and persistent daemon integration remain separate validation tasks." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Audit upstream persistent PTY ARMv7 blockers
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash "$GITHUB_WORKSPACE/termux/ci/audit-armv7-persistent-pty.sh" "$RUNNER_TEMP/opencode-pty-check"
+          {
+            echo "## Persistent PTY ARMv7 status"
+            echo "- Protocol-8 Rust daemon is audited separately from the Node forkpty adapter."
+            echo "- Pinned upstream still requires 32-bit Ghostty ABI bindings, Android Rust target support, and an Android ARMv7 binary package."
+            echo "- The standalone forkpty addon is not treated as a replacement for persistent sessions, handoff, replay, snapshots, or pipe processes."
+            echo "- See termux/armv7/PERSISTENT-PTY-ARMV7-AUDIT.md for the required implementation sequence."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Assemble one-download ARMv7 native test bundle
         if: success()
