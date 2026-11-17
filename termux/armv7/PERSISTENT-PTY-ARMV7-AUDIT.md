@@ -14,12 +14,14 @@ The pinned source has three concrete ARMv7 blockers:
 
 ## Required implementation sequence
 
-- Confirm the pinned Ghostty revision can build its VT library for Android `arm-linux-androideabi` with the NDK API 29 sysroot and the supported Zig toolchain. Do not assume the OpenTUI Zig patches apply to Ghostty.
+- **In progress:** `.github/workflows/armv7-ghostty-android-probe.yml` now attempts to build `libghostty-vt.a` from the exact Ghostty revision pinned by OpenCode v2.3.0 (`ab0b9da9e88fcb4b0533a1854e84628f663930af`) using Zig 0.17.0 and Android NDK 27/API 29. The target is `arm-linux-android`. This is a feasibility probe only; a successful archive build does not prove the Rust daemon works.
 - Generate and review a separate 32-bit ARM C ABI binding set from the exact pinned Ghostty headers. Keep the existing 64-bit bindings unchanged; add compile-time layout assertions for both ABIs.
 - Add an Android Unix transport/daemon build path and verify `portable-pty`, socket permissions, process lifecycle, and signal handling on Bionic.
 - Publish and resolve a dedicated Android ARMv7 binary package only after native build and device runtime tests pass.
 - Run protocol-8 compatibility tests for daemon ownership/handoff, multiple terminals, input/output, resize, subscriptions, replay, snapshots, exit cleanup, and pipe processes.
 
 ## Current decision
+
+The Ghostty build probe has been added to GitHub Actions. Its result must be checked before claiming the Ghostty library is available for ARMv7. The generated FFI ABI, Rust daemon build, package resolver, and protocol-8 runtime are still separate blockers.
 
 The Node-API PTY probe remains a separate non-persistent fallback experiment. It is not wired as a substitute for the protocol-8 daemon. Until the Ghostty 32-bit ABI and daemon path are proven, the persistent PTY feature is explicitly marked **not ported** rather than silently disabled or falsely advertised as complete.
