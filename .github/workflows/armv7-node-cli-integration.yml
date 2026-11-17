@@ -204,13 +204,19 @@ jobs:
           test -s "$RUNNER_TEMP/ghostty-members.txt"
           mkdir -p "$RUNNER_TEMP/ghostty-objects"
           (cd "$RUNNER_TEMP/ghostty-objects" && llvm-ar x "$ROOT/native/libghostty-vt.a")
-          find "$RUNNER_TEMP/ghostty-objects" -type f -print0 | while IFS= read -r -d '' object; do
+          ghostty_arm_object=0
+          while IFS= read -r -d '' object; do
             if readelf -h "$object" 2>/dev/null | grep -q 'Machine:.*ARM'; then
               echo "Verified ARM object: $object"
-              exit 0
+              ghostty_arm_object=1
+              break
             fi
-          done
-          ! find "$ROOT" -iname '*ffmpeg*' -print -quit | grep -q .
+          done < <(find "$RUNNER_TEMP/ghostty-objects" -type f -print0)
+          test "$ghostty_arm_object" -eq 1
+          if find "$ROOT" -iname '*ffmpeg*' -print -quit | grep -q .; then
+            echo "Unexpected bundled FFmpeg asset" >&2
+            exit 1
+          fi
       - name: Upload Android ARMv7 full CLI package candidate
         uses: actions/upload-artifact@v4
         with:
