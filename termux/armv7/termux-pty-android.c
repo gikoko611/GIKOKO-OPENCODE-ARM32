@@ -191,8 +191,12 @@ static napi_value spawn_pty(napi_env env, napi_callback_info info) {
     return fail(env, strerror(saved));
   }
 
-  int flags = fcntl(master, F_GETFL);
-  if (flags >= 0) (void)fcntl(master, F_SETFL, flags | O_NONBLOCK);
+  /*
+   * Keep the PTY master blocking. Node's fs.ReadStream/fs.WriteStream use
+   * libuv's worker pool for descriptor I/O; O_NONBLOCK makes an ordinary
+   * ReadStream surface transient EAGAIN as a fatal stream error on Android.
+   * The addon exposes a stream-compatible fd, so do not set O_NONBLOCK here.
+   */
   (void)fcntl(master, F_SETFD, FD_CLOEXEC);
 
   napi_value result, value;
