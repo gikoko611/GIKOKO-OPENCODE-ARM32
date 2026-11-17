@@ -76,22 +76,22 @@ jobs:
           source = path.read_text()
           replacements = {
               '    miniaudio_translate.addIncludePath(b.path("src"));':
-                  '    if (b.graph.environ_map.get("ANDROID_SYSROOT")) |sysroot| {\\n'
-                  '        miniaudio_translate.addIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/include/arm-linux-androideabi" }) });\\n'
-                  '        miniaudio_translate.addIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/include" }) });\\n'
-                  '    }\\n'
+                  '    if (b.graph.environ_map.get("ANDROID_SYSROOT")) |sysroot| {\n'
+                  '        miniaudio_translate.addIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/include/arm-linux-androideabi" }) });\n'
+                  '        miniaudio_translate.addIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/include" }) });\n'
+                  '    }\n'
                   '    miniaudio_translate.addIncludePath(b.path("src"));',
               '    yoga_translate.addIncludePath(yoga_dep.path(""));':
-                  '    if (b.graph.environ_map.get("ANDROID_SYSROOT")) |sysroot| {\\n'
-                  '        yoga_translate.addIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/include/arm-linux-androideabi" }) });\\n'
-                  '        yoga_translate.addIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/include" }) });\\n'
-                  '    }\\n'
+                  '    if (b.graph.environ_map.get("ANDROID_SYSROOT")) |sysroot| {\n'
+                  '        yoga_translate.addIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/include/arm-linux-androideabi" }) });\n'
+                  '        yoga_translate.addIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/include" }) });\n'
+                  '    }\n'
                   '    yoga_translate.addIncludePath(yoga_dep.path(""));',
               '    module.addImport("context_abi_c", header.createModule());':
-                  '    if (b.graph.environ_map.get("ANDROID_SYSROOT")) |sysroot| {\\n'
-                  '        header.addIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/include/arm-linux-androideabi" }) });\\n'
-                  '        header.addIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/include" }) });\\n'
-                  '    }\\n'
+                  '    if (b.graph.environ_map.get("ANDROID_SYSROOT")) |sysroot| {\n'
+                  '        header.addIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/include/arm-linux-androideabi" }) });\n'
+                  '        header.addIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/include" }) });\n'
+                  '    }\n'
                   '    module.addImport("context_abi_c", header.createModule());'
           }
 
