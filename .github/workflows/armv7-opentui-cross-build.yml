@@ -470,7 +470,7 @@ jobs:
           PY
           grep -n -A8 'fn tryJoinThread' src/clipboard/host.zig
           grep -n -A12 'fn joinCompletedWorker' src/clipboard/host.zig
-      - name: Export Android ARMv7 C atomic shim symbols
+      - name: Replace ARMv7 64-bit atomics with a native 32-bit lock
         working-directory: opentui/packages/native
         shell: bash
         run: |
@@ -478,35 +478,80 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          path = Path("build.zig")
-          source = path.read_text()
-          old = (
-              "    const shared = b.addLibrary(.{\n"
-              "        .name = LIB_NAME,\n"
-              "        .root_module = module,\n"
-              "        .linkage = .dynamic,\n"
-              "    });\n"
-              "    if (target.result.os.tag == .linux and optimize != .debug) shared.build_id = .sha1;"
-          )
-          new = (
-              "    const shared = b.addLibrary(.{\n"
-              "        .name = LIB_NAME,\n"
-              "        .root_module = module,\n"
-              "        .linkage = .dynamic,\n"
-              "    });\n"
-              "    // Android Bionic resolves intra-DSO references through .dynsym.\n"
-              "    // Export default-visible C atomic shim functions for ARMv7.\n"
-              "    if (target.result.os.tag == .linux and target.result.abi == .android and target.result.cpu.arch == .arm) {\n"
-              "        shared.rdynamic = true;\n"
-              "    }\n"
-              "    if (target.result.os.tag == .linux and optimize != .debug) shared.build_id = .sha1;"
-          )
-          if source.count(old) != 1:
-              raise SystemExit(f"build.zig: expected one shared-library block, found {source.count(old)}")
-          path.write_text(source.replace(old, new, 1))
-          print("Enabled -rdynamic for the Android ARMv7 OpenTUI shared library.")
+          zig = Path("src/atomic64.zig")
+          zig.write_text("""const std = @import("std");
+
+          // ARMv7 has native 32-bit atomics but no lock-free 64-bit atomics.
+          // Serialize the small set of OpenTUI u64 counters with one process-local
+          // 32-bit acquire/release spin lock. This is stronger than the callers'
+          // requested monotonic ordering and avoids unresolved libatomic helpers.
+          var atomic_lock: std.atomic.Value(u32) = .init(0);
+
+          fn acquire() void {
+              while (atomic_lock.cmpxchgWeak(0, 1, .acquire, .monotonic) != null) {}
+          }
+
+          fn release() void {
+              atomic_lock.store(0, .release);
+          }
+
+          pub export fn ot_atomic_u64_load_impl(value: *const u64) u64 {
+              acquire();
+              defer release();
+              return value.*;
+          }
+
+          pub export fn ot_atomic_u64_fetch_add_impl(value: *u64, amount: u64) u64 {
+              acquire();
+              defer release();
+              const previous = value.*;
+              value.* = previous +% amount;
+              return previous;
+          }
+
+          pub export fn ot_atomic_u64_compare_exchange_impl(value: *u64, expected: *u64, desired: u64) c_int {
+              acquire();
+              defer release();
+              if (value.* == expected.*) {
+                  value.* = desired;
+                  return 1;
+              }
+              expected.* = value.*;
+              return 0;
+          }
+
+          pub export fn ot_atomic_u64_load(value: *const u64) u64 {
+              return ot_atomic_u64_load_impl(value);
+          }
+
+          pub export fn ot_atomic_u64_fetch_add(value: *u64, amount: u64) u64 {
+              return ot_atomic_u64_fetch_add_impl(value, amount);
+          }
+
+          pub export fn ot_atomic_u64_compare_exchange(value: *u64, expected: *u64, desired: u64) c_int {
+              return ot_atomic_u64_compare_exchange_impl(value, expected, desired);
+          }
+
+          pub fn load(value: *const u64) u64 { return ot_atomic_u64_load(value); }
+          pub fn fetchAdd(value: *u64, amount: u64) u64 { return ot_atomic_u64_fetch_add(value, amount); }
+          pub fn compareExchange(value: *u64, expected: *u64, desired: u64) bool {
+              return ot_atomic_u64_compare_exchange(value, expected, desired) != 0;
+          }
+          """)
+
+          build = Path("build.zig")
+          source = build.read_text()
+          c_shim = """    if (target.result.os.tag == .linux and target.result.abi == .android and target.result.cpu.arch == .arm) {
+                  module.addCSourceFile(.{ .file = b.path("src/atomic64_android.c"), .flags = &.{"-std=c11"} });
+              }
+          """
+          if source.count(c_shim) != 1:
+              raise SystemExit(f"build.zig: expected one ARMv7 C atomic source block, found {source.count(c_shim)}")
+          build.write_text(source.replace(c_shim, "", 1))
+          print("Installed Zig-exported ARMv7-safe u64 atomic shim; removed the C atomic dependency.")
           PY
-          grep -n -A14 'const shared = b.addLibrary' build.zig
+          grep -n -A12 'pub export fn ot_atomic_u64_load_impl' src/atomic64.zig
+          ! grep -n 'atomic64_android.c' build.zig
 
       - name: Cross-compile with Android Bionic sysroot
         working-directory: opentui/packages/native
