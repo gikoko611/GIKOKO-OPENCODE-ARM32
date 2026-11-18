@@ -19,12 +19,14 @@ jobs:
           node-version: 20
       - name: Validate CLI
         run: |
+          chmod +x giko-cli/install.sh
           node --check giko-cli/src/index.mjs
-          test -x giko-cli/install.sh
+          test -f giko-cli/package.json
       - name: Package
         run: |
           mkdir -p dist/giko-koko-cli-armv7
           cp -a giko-cli/. dist/giko-koko-cli-armv7/
+          chmod +x dist/giko-koko-cli-armv7/install.sh
           printf '%s\n' 'G.I KO KO CLI ARMv7 / Termux bundle' > dist/giko-koko-cli-armv7/BUILD.txt
           tar -czf giko-koko-cli-armv7.tar.gz -C dist giko-koko-cli-armv7
           sha256sum giko-koko-cli-armv7.tar.gz > giko-koko-cli-armv7.sha256
