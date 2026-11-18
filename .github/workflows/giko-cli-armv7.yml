@@ -1,4 +1,4 @@
-name: G.I KO KO CLI ARMv7
+name: G.I KO KO Code CLI ARMv7
 
 on:
   workflow_dispatch:
@@ -24,15 +24,15 @@ jobs:
           test -f giko-cli/package.json
       - name: Package
         run: |
-          mkdir -p dist/giko-koko-cli-armv7
-          cp -a giko-cli/. dist/giko-koko-cli-armv7/
-          chmod +x dist/giko-koko-cli-armv7/install.sh
-          printf '%s\n' 'G.I KO KO CLI ARMv7 / Termux bundle' > dist/giko-koko-cli-armv7/BUILD.txt
-          tar -czf giko-koko-cli-armv7.tar.gz -C dist giko-koko-cli-armv7
-          sha256sum giko-koko-cli-armv7.tar.gz > giko-koko-cli-armv7.sha256
+          mkdir -p dist/gcode-koko-cli-armv7
+          cp -a giko-cli/. dist/gcode-koko-cli-armv7/
+          chmod +x dist/gcode-koko-cli-armv7/install.sh
+          printf '%s\n' 'G.I KO KO Code CLI ARMv7 / Termux bundle' > dist/gcode-koko-cli-armv7/BUILD.txt
+          tar -czf gcode-koko-cli-armv7.tar.gz -C dist gcode-koko-cli-armv7
+          sha256sum gcode-koko-cli-armv7.tar.gz > gcode-koko-cli-armv7.sha256
       - uses: actions/upload-artifact@v4
         with:
-          name: giko-koko-cli-armv7
+          name: gcode-koko-cli-armv7
           path: |
-            giko-koko-cli-armv7.tar.gz
-            giko-koko-cli-armv7.sha256
+            gcode-koko-cli-armv7.tar.gz
+            gcode-koko-cli-armv7.sha256
