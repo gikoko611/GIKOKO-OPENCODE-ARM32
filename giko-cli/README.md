@@ -37,7 +37,8 @@ gcode
 | `/agent tester <task>` | Testing task profile |
 | `/agent planner <task>` | Planning task profile |
 | `/skills` | List project Skills |
-| `/model` / `/models` | Open live provider model picker (free-only filter, refresh, manual ID) |\n| `/model <id>` | Set model directly |
+| `/model` / `/models` | Open live provider model picker (free-only filter, refresh, manual ID) |
+| `/model <id>` | Set model directly |
 | `/doctor` | Environment/provider check |
 | `/status` | Current session and enabled features |
 | `/resume <session-id>` | Resume a saved session |
