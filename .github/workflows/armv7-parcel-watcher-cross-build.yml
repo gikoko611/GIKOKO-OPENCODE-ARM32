@@ -5,6 +5,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/armv7-parcel-watcher-cross-build.yml"
+      - ".github/workflows/armv7-node-cli-integration.yml"
 
 permissions:
   contents: read
