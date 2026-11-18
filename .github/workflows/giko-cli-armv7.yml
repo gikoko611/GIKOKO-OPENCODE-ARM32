@@ -1,0 +1,36 @@
+name: G.I KO KO CLI ARMv7
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "giko-cli/**"
+      - ".github/workflows/giko-cli-armv7.yml"
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+      - name: Validate CLI
+        run: |
+          node --check giko-cli/src/index.mjs
+          test -x giko-cli/install.sh
+      - name: Package
+        run: |
+          mkdir -p dist/giko-koko-cli-armv7
+          cp -a giko-cli/. dist/giko-koko-cli-armv7/
+          printf '%s\n' 'G.I KO KO CLI ARMv7 / Termux bundle' > dist/giko-koko-cli-armv7/BUILD.txt
+          tar -czf giko-koko-cli-armv7.tar.gz -C dist giko-koko-cli-armv7
+          sha256sum giko-koko-cli-armv7.tar.gz > giko-koko-cli-armv7.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: giko-koko-cli-armv7
+          path: |
+            giko-koko-cli-armv7.tar.gz
+            giko-koko-cli-armv7.sha256
