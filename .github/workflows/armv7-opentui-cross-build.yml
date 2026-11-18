@@ -480,23 +480,27 @@ jobs:
 
           path = Path("build.zig")
           source = path.read_text()
-          old = """    const shared = b.addLibrary(.{
-          .name = LIB_NAME,
-          .root_module = module,
-          .linkage = .dynamic,
-      });
-      if (target.result.os.tag == .linux and optimize != .debug) shared.build_id = .sha1;"""
-          new = """    const shared = b.addLibrary(.{
-          .name = LIB_NAME,
-          .root_module = module,
-          .linkage = .dynamic,
-      });
-      // Android Bionic resolves intra-DSO references through .dynsym. Export
-      // default-visible C atomic shim functions so ARMv7 can resolve them.
-      if (target.result.os.tag == .linux and target.result.abi == .android and target.result.cpu.arch == .arm) {
-          shared.rdynamic = true;
-      }
-      if (target.result.os.tag == .linux and optimize != .debug) shared.build_id = .sha1;"""
+          old = (
+              "    const shared = b.addLibrary(.{\n"
+              "        .name = LIB_NAME,\n"
+              "        .root_module = module,\n"
+              "        .linkage = .dynamic,\n"
+              "    });\n"
+              "    if (target.result.os.tag == .linux and optimize != .debug) shared.build_id = .sha1;"
+          )
+          new = (
+              "    const shared = b.addLibrary(.{\n"
+              "        .name = LIB_NAME,\n"
+              "        .root_module = module,\n"
+              "        .linkage = .dynamic,\n"
+              "    });\n"
+              "    // Android Bionic resolves intra-DSO references through .dynsym.\n"
+              "    // Export default-visible C atomic shim functions for ARMv7.\n"
+              "    if (target.result.os.tag == .linux and target.result.abi == .android and target.result.cpu.arch == .arm) {\n"
+              "        shared.rdynamic = true;\n"
+              "    }\n"
+              "    if (target.result.os.tag == .linux and optimize != .debug) shared.build_id = .sha1;"
+          )
           if source.count(old) != 1:
               raise SystemExit(f"build.zig: expected one shared-library block, found {source.count(old)}")
           path.write_text(source.replace(old, new, 1))
