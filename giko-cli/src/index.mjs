@@ -134,6 +134,33 @@ async function showModels(rl,c){
 }
 async function doctor(){const c=await cfg();console.log("G.I KO KO CODE "+VERSION);console.log("Node: "+process.version+" / "+process.arch);console.log("Project: "+ROOT);console.log("Provider: "+c.baseURL);console.log("Model: "+c.model);console.log("Mode: "+c.mode);try{await fs.access(path.join(ROOT,".git"));ok("Git repository detected")}catch{warn("Not a Git repository")}try{const r=await fetch(c.baseURL,{method:"HEAD",signal:AbortSignal.timeout(10000)});ok("Provider host reachable (HTTP "+r.status+")")}catch(e){warn("Provider check: "+e.message)}}
 const featureLabels={fileRead:"Read project files",fileWrite:"Write/edit project files",shell:"Run shell commands",git:"Git tools",skills:"Load project Skills",plan:"Plan mode",memory:"Persistent session history",subagents:"Subagent profiles",mcp:"MCP configuration",plugins:"Plugin configuration",lsp:"LSP configuration",hooks:"Hooks"};
+async function fetchModels(c){
+  const base=c.baseURL.replace(/\/$/,""),headers={"accept":"application/json","user-agent":"gcode-koko-cli/"+VERSION};
+  if(c.apiKey)headers.authorization="Bearer "+c.apiKey;
+  const r=await fetch(base+"/models",{headers,signal:AbortSignal.timeout(20000)});
+  const body=await r.text();if(!r.ok)throw Error("Model list HTTP "+r.status+": "+body.slice(0,500));
+  const j=JSON.parse(body),raw=Array.isArray(j)?j:(j.data||j.models||j.result?.data||[]);
+  return raw.map(x=>({id:String(x.id||x.name||x.model||""),free:(x.pricing?.prompt===0&&x.pricing?.completion===0)||(x.input_cost===0&&x.output_cost===0)||/free/i.test(String(x.id||x.name||""))})).filter(x=>x.id);
+}
+async function chooseModel(rl,c){
+  console.log("\n◆ MODEL SELECTOR  Provider: "+c.baseURL);
+  let models;try{models=await fetchModels(c)}catch(e){fail(e.message);const id=await ask(rl,"Model ID (blank cancels): ");if(id){c.model=id;await save(c);ok("Active model: "+id)}return}
+  if(!models.length){warn("Provider returned an empty model list.");return}
+  let freeOnly=false;
+  while(true){
+    const shown=freeOnly?models.filter(x=>x.free):models;
+    console.log("\n"+(freeOnly?"Free models":"Available models")+" ("+shown.length+")");
+    shown.slice(0,100).forEach((m,i)=>console.log((i+1)+". "+(m.id===c.model?paint("● ",C.green):"  ")+m.id+(m.free?"  [FREE]":"")));
+    console.log("f. "+(freeOnly?"Show all models":"Free models only")+"   r. Refresh   m. Enter model ID   0. Back");
+    const v=await ask(rl,paint("Choose model: ",C.gold));
+    if(v==="0"||!v)break;
+    if(v==="f"){freeOnly=!freeOnly;continue}
+    if(v==="r"){try{models=await fetchModels(c);ok("Model list refreshed")}catch(e){fail(e.message)}continue}
+    if(v==="m"){const id=await ask(rl,"Model ID: ");if(id){c.model=id;await save(c);ok("Active model: "+id)}continue}
+    if(/^\d+$/.test(v)&&Number(v)>=1&&Number(v)<=Math.min(shown.length,100)){c.model=shown[Number(v)-1].id;await save(c);ok("Active model: "+c.model);break}
+    warn("Invalid selection");
+  }
+}
 async function settings(rl,c){
   const keys=Object.keys(featureLabels);
   while(true){
@@ -167,7 +194,8 @@ async function interactive(){
     if(q==="/exit"||q==="/quit")break;
     if(q==="/help"){console.log("/settings /model <id> /models /doctor /plan <task> /auto /ask /skills /agents /mcp /plugins /hooks /status /context /compact /clear /resume <session-id> /exit\nUse @path to attach a file. Use !command to run a shell command.");continue}
     if(q==="/settings"){await settings(rl,c);continue}
-    if(q==="/models"){await showModels(rl,c);continue}
+    if(q==="/models"){await chooseModel(rl,c);continue}
+    if(q==="/model"){await chooseModel(rl,c);continue}
     if(q.startsWith("/model ")){const value=q.slice(7).trim();if(/^\d+$/.test(value)){try{const models=await fetchModels(c);const item=models[Number(value)-1];if(!item){warn("Model number not found. Use /models");continue}c.model=item.id}catch(e){fail(e.message);continue}}else c.model=value;await save(c);ok("Model changed to "+c.model);continue}
     if(q==="/doctor"){await doctor();continue}
     if(q==="/plan"){c.mode="plan";await save(c);ok("Plan mode enabled (tools disabled)");continue}
