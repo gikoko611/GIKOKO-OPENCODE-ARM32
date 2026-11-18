@@ -1,0 +1,117 @@
+name: Persistent PTY Android ARMv7 cross-build gate
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/armv7-persistent-pty-cross-build.yml"
+      - ".github/workflows/armv7-node-cli-integration.yml"
+      - "termux/ci/patch-process-daemon-armv7.sh"
+      - "termux/armv7/PERSISTENT-PTY-ARMV7-AUDIT.md"
+
+permissions:
+  contents: read
+
+jobs:
+  persistent-pty-armv7:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      ANDROID_API_LEVEL: "29"
+      GHOSTTY_REVISION: ab0b9da9e88fcb4b0533a1854e84628f663930af
+    steps:
+      - name: Checkout ARMv7 port
+        uses: actions/checkout@v4
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - name: Install Rust toolchain and Android target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: armv7-linux-androideabi
+
+      - name: Install Android NDK and libclang
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y libclang-dev llvm clang
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -perm -u+x | sort | tail -n 1)"
+          test -n "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --install "ndk;27.2.12479018"
+          NDK="$ANDROID_HOME/ndk/27.2.12479018"
+          echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$NDK" >> "$GITHUB_ENV"
+          echo "NDK_HOME=$NDK" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi29-clang" >> "$GITHUB_ENV"
+          echo "AR_armv7_linux_androideabi=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar" >> "$GITHUB_ENV"
+          test -x "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi29-clang"
+
+      - name: Install exact bindgen CLI
+        run: cargo install bindgen-cli --version 0.72.1 --locked
+
+      - name: Fetch pinned OpenCode and Ghostty sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch v2.3.0 https://github.com/anomalyco/opencode.git upstream-opencode
+          git init ghostty
+          git -C ghostty remote add origin https://github.com/ghostty-org/ghostty.git
+          git -C ghostty fetch --depth=1 origin "$GHOSTTY_REVISION"
+          git -C ghostty checkout --detach FETCH_HEAD
+          test "$(git -C ghostty rev-parse HEAD)" = "$GHOSTTY_REVISION"
+          test "$(cat upstream-opencode/packages/process-daemon/ghostty-revision)" = "$GHOSTTY_REVISION"
+
+      - name: Patch Android ARMv7 target and regenerate 32-bit FFI
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash termux/ci/patch-process-daemon-armv7.sh "$GITHUB_WORKSPACE/upstream-opencode"
+
+      - name: Cross-build protocol-8 persistent PTY daemon
+        working-directory: upstream-opencode
+        shell: bash
+        env:
+          GHOSTTY_SOURCE_DIR: ${{ github.workspace }}/ghostty
+        run: |
+          set -euo pipefail
+          grep -n -A14 'let zig_target = match target.as_str()' packages/process-daemon/build.rs
+          grep -F '"armv7-linux-androideabi" => "arm-linux-androideabi",' packages/process-daemon/build.rs
+          cargo build --locked --release --target armv7-linux-androideabi \
+            --manifest-path packages/process-daemon/Cargo.toml
+          # Cargo may place target artifacts under the package workspace rather
+          # than the repository-level target directory. Discover the actual
+          # ARMv7 daemon, then stage it at a stable artifact path.
+          BIN="$(find . -type f -path '*/armv7-linux-androideabi/release/opencode-pty' -print -quit)"
+          test -n "$BIN"
+          test -s "$BIN"
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          install -m 0755 "$BIN" "$GITHUB_WORKSPACE/dist/opencode-pty"
+          readelf -h "$GITHUB_WORKSPACE/dist/opencode-pty" | grep -E 'Class:.*ELF32'
+          readelf -h "$GITHUB_WORKSPACE/dist/opencode-pty" | grep -E 'Machine:.*ARM'
+          readelf -l "$GITHUB_WORKSPACE/dist/opencode-pty" | grep -E 'interpreter.*linker' || true
+          file "$GITHUB_WORKSPACE/dist/opencode-pty"
+          sha256sum "$GITHUB_WORKSPACE/dist/opencode-pty" | tee "$GITHUB_WORKSPACE/dist/persistent-pty-armv7.sha256"
+          {
+            echo "## Protocol-8 persistent PTY ARMv7 cross-build"
+            echo "- OpenCode: v2.3.0"
+            echo "- Ghostty: $GHOSTTY_REVISION"
+            echo "- Rust target: armv7-linux-androideabi"
+            echo "- Zig target ABI: arm-linux-androideabi (softfp)"
+            echo "- Android NDK API: 29"
+            echo "- ELF32 ARM daemon compiled. Device protocol tests remain required."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload protocol-8 daemon candidate
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-pty-protocol8-android-armv7-candidate
+          path: |
+            dist/opencode-pty
+            dist/persistent-pty-armv7.sha256
+          retention-days: 14

@@ -1,0 +1,247 @@
+name: ARMv7 Android Node CLI integration build
+
+on:
+  push:
+    branches: ["armv7/**"]
+    paths:
+      - ".github/workflows/armv7-node-cli-integration.yml"
+      - ".github/workflows/armv7-opentui-cross-build.yml"
+      - ".github/workflows/armv7-parcel-watcher-cross-build.yml"
+      - ".github/workflows/armv7-ghostty-android-probe.yml"
+      - ".github/workflows/armv7-persistent-pty-cross-build.yml"
+      - "termux/ci/build-armv7-node-cli.py"
+      - "termux/armv7/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: armv7-node-cli-integration-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  node-cli-esm-bundle:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26.4.0
+      - name: Fetch pinned upstream source
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch v2.3.0 https://github.com/anomalyco/opencode.git upstream
+      - name: Apply pinned Termux dependency versions
+        run: bun termux/ci/versions.ts apply --target upstream
+      - name: Patch Android ARMv7 Node bundle path
+        run: python3 termux/ci/build-armv7-node-cli.py upstream
+      - name: Install workspace dependencies
+        working-directory: upstream
+        run: bun install
+      - name: Patch installed OpenTUI runtime resolver
+        run: python3 termux/ci/patch-opentui-node-runtime.py upstream
+      - name: Build and smoke-test Android ARMv7 Node ESM bundle
+        working-directory: upstream/packages/cli
+        env:
+          OPENCODE_TARGET: android-arm
+          OPENCODE_VERSION: "2.3.0"
+          OPENCODE_CHANNEL: "termux-armv7"
+        run: |
+          set -euo pipefail
+          bun run script/build-node.ts --bundle-only --skip-install --outdir=dist/armv7-node-cli
+          test -s dist-node/opencode.mjs
+          node --experimental-ffi --use-system-ca --disable-warning=ExperimentalWarning dist-node/opencode.mjs --version
+          node --experimental-ffi --use-system-ca --disable-warning=ExperimentalWarning dist-node/opencode.mjs --help >/dev/null
+          for command in mcp plugin auth models; do
+            node --experimental-ffi --use-system-ca --disable-warning=ExperimentalWarning dist-node/opencode.mjs "$command" --help >/dev/null
+          done
+          mkdir -p ../../dist/armv7-node-cli/assets
+          cp dist-node/opencode.mjs ../../dist/armv7-node-cli/opencode.mjs
+          cp -a dist-node/assets/. ../../dist/armv7-node-cli/assets/
+          test -s ../../dist/armv7-node-cli/assets/app-archive.bin
+          test -s ../../dist/armv7-node-cli/assets/@silvia-odwyer/photon-node/photon_rs_bg.wasm
+      - name: Download latest successful ARMv7 native component artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE/upstream/dist/armv7-node-cli"
+          mkdir -p "$ROOT/native" "$RUNNER_TEMP/native-artifacts"
+          download_artifact() {
+            workflow="$1"
+            artifact="$2"
+            dest="$3"
+            run_id=""
+            echo "Waiting for $workflow on exact source SHA $GITHUB_SHA"
+            for attempt in $(seq 1 90); do
+              runs="$(gh run list --workflow "$workflow" --branch "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --limit 10 --json databaseId,status,conclusion,headSha)"
+              latest="$(jq -c --arg sha "$GITHUB_SHA" 'map(select(.headSha == $sha)) | sort_by(.databaseId) | last // empty' <<< "$runs")"
+              if [ -n "$latest" ]; then
+                status="$(jq -r '.status' <<< "$latest")"
+                conclusion="$(jq -r '.conclusion // empty' <<< "$latest")"
+                candidate="$(jq -r '.databaseId' <<< "$latest")"
+                if [ "$status" = "completed" ] && [ "$conclusion" = "success" ]; then
+                  run_id="$candidate"
+                  break
+                fi
+                if [ "$status" = "completed" ] && [ "$conclusion" != "success" ]; then
+                  echo "$workflow failed for $GITHUB_SHA: $conclusion" >&2
+                  exit 1
+                fi
+              fi
+              echo "  waiting ($attempt/90)"
+              sleep 30
+            done
+            test -n "$run_id" || { echo "Timed out waiting for same-SHA success: $workflow" >&2; exit 1; }
+            echo "Downloading $artifact from same-SHA run $run_id"
+            gh run download "$run_id" --name "$artifact" --dir "$dest"
+          }
+          download_artifact armv7-opentui-cross-build.yml GIKOKO-OPENCODE-ARM32-NATIVE-TEST-BUNDLE "$RUNNER_TEMP/native-artifacts/opentui"
+          download_artifact armv7-parcel-watcher-cross-build.yml parcel-watcher-android-armv7-candidate "$RUNNER_TEMP/native-artifacts/parcel"
+          download_artifact armv7-persistent-pty-cross-build.yml opencode-pty-protocol8-android-armv7-candidate "$RUNNER_TEMP/native-artifacts/pty"
+          download_artifact armv7-ghostty-android-probe.yml ghostty-lib-vt-android-armv7-probe "$RUNNER_TEMP/native-artifacts/ghostty"
+          NATIVE_ZIP="$(find "$RUNNER_TEMP/native-artifacts/opentui" -name 'GIKOKO-OPENCODE-ARM32-NATIVE-TEST-BUNDLE.zip' -print -quit)"
+          test -n "$NATIVE_ZIP"
+          mkdir -p "$RUNNER_TEMP/native-artifacts/opentui/extracted"
+          unzip -q "$NATIVE_ZIP" -d "$RUNNER_TEMP/native-artifacts/opentui/extracted"
+          EXTRACTED="$RUNNER_TEMP/native-artifacts/opentui/extracted"
+          install -m 0644 "$EXTRACTED/libopentui-android-armv7.so" "$ROOT/native/"
+          install -m 0644 "$EXTRACTED/termux-pty-android-armv7.node" "$ROOT/native/"
+          install -m 0644 "$EXTRACTED/libc++_shared-android-armv7.so" "$ROOT/native/"
+          PARCEL="$(find "$RUNNER_TEMP/native-artifacts/parcel" -name watcher.node -print -quit)"
+          PTY="$(find "$RUNNER_TEMP/native-artifacts/pty" -name opencode-pty -print -quit)"
+          GHOSTTY="$(find "$RUNNER_TEMP/native-artifacts/ghostty" -name libghostty-vt.a -print -quit)"
+          test -n "$PARCEL" && test -n "$PTY" && test -n "$GHOSTTY"
+          install -m 0644 "$PARCEL" "$ROOT/native/watcher.node"
+          install -m 0755 "$PTY" "$ROOT/native/opencode-pty"
+          install -m 0644 "$GHOSTTY" "$ROOT/native/libghostty-vt.a"
+          for file in "$ROOT/native/termux-pty-android-armv7.node" "$ROOT/native/watcher.node" "$ROOT/native/libopentui-android-armv7.so"; do
+            readelf -h "$file" | grep -E 'Class:.*ELF32'
+            readelf -h "$file" | grep -E 'Machine:.*ARM'
+          done
+          readelf -h "$ROOT/native/opencode-pty" | grep -E 'Class:.*ELF32'
+          readelf -h "$ROOT/native/opencode-pty" | grep -E 'Machine:.*ARM'
+          cat > "$ROOT/opencode" <<'EOF'
+          #!/data/data/com.termux/files/usr/bin/bash
+          set -euo pipefail
+          ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+          NODE_BIN="${NODE_BIN:-${PREFIX:-/data/data/com.termux/files/usr}/bin/node}"
+          export OPENTUI_LIB_PATH="$ROOT/native/libopentui-android-armv7.so"
+          export OPENCODE_TERMUX_PTY_PATH="$ROOT/native/termux-pty-android-armv7.node"
+          export OPENCODE_PARCEL_WATCHER_PATH="$ROOT/native/watcher.node"
+          export OPENCODE_PTY_BIN="$ROOT/native/opencode-pty"
+          export OPENCODE_PHOTON_WASM_PATH="$ROOT/assets/@silvia-odwyer/photon-node/photon_rs_bg.wasm"
+          export LD_LIBRARY_PATH="$ROOT/native${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          export SSL_CERT_FILE="${SSL_CERT_FILE:-$PREFIX/etc/tls/cert.pem}"
+          export SSL_CERT_DIR="${SSL_CERT_DIR:-$PREFIX/etc/tls/certs}"
+          mkdir -p "$SSL_CERT_DIR"
+          exec "$NODE_BIN" --experimental-ffi --use-system-ca --disable-warning=ExperimentalWarning "$ROOT/opencode.mjs" "$@"
+          EOF
+          chmod 0755 "$ROOT/opencode"
+          cat > "$ROOT/install.sh" <<'INSTALL'
+          #!/data/data/com.termux/files/usr/bin/bash
+          set -euo pipefail
+          HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+          PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+          NODE_BIN="${NODE_BIN:-$PREFIX/bin/node}"
+          mkdir -p "$PREFIX/etc/tls/certs"
+          test -x "$NODE_BIN" || { echo "Termux Node.js 26.4.0+ is required." >&2; exit 1; }
+          "$NODE_BIN" -e 'const [a,b]=process.versions.node.split(".").map(Number); if(a<26||(a===26&&b<4)) process.exit(1)' || {
+            echo "Node.js 26.4.0 or later is required." >&2; exit 1;
+          }
+          "$NODE_BIN" -e 'if(process.arch!=="arm"||process.platform!=="android"){console.error("Expected Android ARMv7 Node; got "+process.platform+"/"+process.arch);process.exit(1)}'
+          if ! command -v rg >/dev/null 2>&1; then
+            command -v pkg >/dev/null 2>&1 || { echo "Install ripgrep with: pkg install ripgrep" >&2; exit 1; }
+            pkg install -y ripgrep
+          fi
+          DEST="$PREFIX/lib/opencode-armv7"
+          mkdir -p "$DEST"
+          cp -f "$HERE/opencode.mjs" "$DEST/"
+          rm -rf "$DEST/assets" "$DEST/native"
+          cp -a "$HERE/assets" "$HERE/native" "$DEST/"
+          cat > "$PREFIX/bin/opencode" <<'LAUNCH'
+          #!/data/data/com.termux/files/usr/bin/bash
+          set -euo pipefail
+          PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+          NODE_BIN="${NODE_BIN:-$PREFIX/bin/node}"
+          mkdir -p "$PREFIX/etc/tls/certs"
+          ROOT="$PREFIX/lib/opencode-armv7"
+          export OPENTUI_LIB_PATH="$ROOT/native/libopentui-android-armv7.so"
+          export OPENCODE_TERMUX_PTY_PATH="$ROOT/native/termux-pty-android-armv7.node"
+          export OPENCODE_PARCEL_WATCHER_PATH="$ROOT/native/watcher.node"
+          export OPENCODE_PTY_BIN="$ROOT/native/opencode-pty"
+          export OPENCODE_PHOTON_WASM_PATH="$ROOT/assets/@silvia-odwyer/photon-node/photon_rs_bg.wasm"
+          export LD_LIBRARY_PATH="$ROOT/native${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          export SSL_CERT_FILE="${SSL_CERT_FILE:-$PREFIX/etc/tls/cert.pem}"
+          export SSL_CERT_DIR="${SSL_CERT_DIR:-$PREFIX/etc/tls/certs}"
+          mkdir -p "$SSL_CERT_DIR"
+          exec "$NODE_BIN" --experimental-ffi --use-system-ca --disable-warning=ExperimentalWarning "$ROOT/opencode.mjs" "$@"
+          LAUNCH
+          chmod 0755 "$PREFIX/bin/opencode"
+          echo "Installed OpenCode ARMv7 CLI. Run: opencode --help"
+          INSTALL
+          chmod 0755 "$ROOT/install.sh"
+          cat > "$ROOT/README-TERMUX.txt" <<'EOF'
+          G.I KO KO OpenCode - Android ARMv7 Node CLI bundle candidate
+          Target: Termux / Android Bionic / ARMv7 / Node.js 26.4.0
+          Includes the OpenCode Node ESM CLI, app archive, Photon WASM,
+          OpenTUI native library, Node-API PTY addon, Parcel watcher addon,
+          and protocol-8 persistent PTY daemon.
+          This is a candidate package only. Run on-device smoke tests before
+          treating it as a release. Install/use from Termux with ./opencode.
+          FFF native acceleration is not bundled; upstream's Node search path
+          must fall back to its ripgrep implementation when FFF is unavailable.
+          EOF
+          (cd "$ROOT" && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
+          du -ah "$ROOT" | sort -h | tail -20
+      - name: Install LLVM archive tools for Ghostty audit
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y llvm
+          command -v llvm-ar
+      - name: Audit final package contents and launch scripts
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE/upstream/dist/armv7-node-cli"
+          test -s "$ROOT/opencode.mjs"
+          test -s "$ROOT/assets/app-archive.bin"
+          test -s "$ROOT/assets/@silvia-odwyer/photon-node/photon_rs_bg.wasm"
+          test -x "$ROOT/opencode"
+          test -x "$ROOT/install.sh"
+          bash -n "$ROOT/opencode" "$ROOT/install.sh"
+          (cd "$ROOT" && sha256sum -c SHA256SUMS)
+          for file in native/libopentui-android-armv7.so native/termux-pty-android-armv7.node native/watcher.node native/opencode-pty native/libc++_shared-android-armv7.so; do
+            readelf -h "$ROOT/$file" | grep -q 'Class:.*ELF32'
+            readelf -h "$ROOT/$file" | grep -q 'Machine:.*ARM'
+          done
+          llvm-ar t "$ROOT/native/libghostty-vt.a" > "$RUNNER_TEMP/ghostty-members.txt"
+          test -s "$RUNNER_TEMP/ghostty-members.txt"
+          mkdir -p "$RUNNER_TEMP/ghostty-objects"
+          (cd "$RUNNER_TEMP/ghostty-objects" && llvm-ar x "$ROOT/native/libghostty-vt.a")
+          ghostty_arm_object=0
+          while IFS= read -r -d '' object; do
+            if readelf -h "$object" 2>/dev/null | grep -q 'Machine:.*ARM'; then
+              echo "Verified ARM object: $object"
+              ghostty_arm_object=1
+              break
+            fi
+          done < <(find "$RUNNER_TEMP/ghostty-objects" -type f -print0)
+          test "$ghostty_arm_object" -eq 1
+          if find "$ROOT" -iname '*ffmpeg*' -print -quit | grep -q .; then
+            echo "Unexpected bundled FFmpeg asset" >&2
+            exit 1
+          fi
+      - name: Upload Android ARMv7 full CLI package candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: OPENCODE-ANDROID-ARMV7-FULL-CLI-PACKAGE-CANDIDATE
+          path: upstream/dist/armv7-node-cli/
+          if-no-files-found: error
+          retention-days: 14

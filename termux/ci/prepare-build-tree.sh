@@ -32,6 +32,12 @@ echo ""
 echo "=== step 3/3: apply source patches ==="
 bash "$CI_DIR/apply-patches.sh" "$TARGET"
 
+if [ "${OPENCODE_TERMUX_ARMV7:-0}" = "1" ]; then
+  echo ""
+  echo "=== step 4/4: install Android ARMv7 Node PTY adapter ==="
+  bash "$REPO_ROOT/termux/ci/apply-armv7-pty-adapter.sh" "$TARGET"
+fi
+
 echo ""
 echo "→ build tree ready at $TARGET"
 echo "  cd $TARGET && bun install && OPENCODE_TARGET=linux-arm64 bun packages/cli/script/build.ts --skip-install --skip-web-ui"

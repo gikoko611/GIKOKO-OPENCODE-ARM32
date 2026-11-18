@@ -1,0 +1,87 @@
+name: Ghostty lib-vt Android ARMv7 feasibility probe
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/armv7-ghostty-android-probe.yml"
+      - ".github/workflows/armv7-node-cli-integration.yml"
+      - "termux/armv7/PERSISTENT-PTY-ARMV7-AUDIT.md"
+
+permissions:
+  contents: read
+
+jobs:
+  ghostty-lib-vt-armv7:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GHOSTTY_REVISION: ab0b9da9e88fcb4b0533a1854e84628f663930af
+      ANDROID_API_LEVEL: "29"
+    steps:
+      - name: Checkout port repository
+        uses: actions/checkout@v4
+
+      - name: Install pinned Zig toolchain
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - name: Install Android NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -perm -u+x | sort | tail -n 1)"
+          test -n "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --install "ndk;27.2.12479018"
+          NDK="$ANDROID_HOME/ndk/27.2.12479018"
+          echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$NDK" >> "$GITHUB_ENV"
+          echo "NDK_HOME=$NDK" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK=$NDK" >> "$GITHUB_ENV"
+          test -x "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi29-clang"
+          find "$NDK/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/arm-linux-androideabi" -maxdepth 2 -type f -print | awk 'NR <= 30 { print }'
+
+      - name: Fetch exact Ghostty revision used by OpenCode v2.3.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init ghostty
+          git -C ghostty remote add origin https://github.com/ghostty-org/ghostty.git
+          git -C ghostty fetch --depth=1 origin "$GHOSTTY_REVISION"
+          git -C ghostty checkout --detach FETCH_HEAD
+          test "$(git -C ghostty rev-parse HEAD)" = "$GHOSTTY_REVISION"
+          grep -F 'minimum_zig_version = "0.16.0"' ghostty/build.zig.zon
+          grep -F 'if (lib.rootModuleTarget().abi.isAndroid())' ghostty/src/build/GhosttyLibVt.zig
+
+      - name: Cross-build Ghostty VT library for Android ARMv7
+        working-directory: ghostty
+        shell: bash
+        run: |
+          set -euo pipefail
+          zig version
+          # Zig distinguishes Android ARM's softfp ABI as androideabi.
+          # Using the generic android triple incorrectly selects hard-float.
+          zig build -Dtarget=arm-linux-androideabi -Doptimize=ReleaseFast \
+            -Demit-lib-vt=true -Demit-xcframework=false -Dapp-runtime=none \
+            --prefix "$GITHUB_WORKSPACE/ghostty-install" --summary all
+          LIB="$GITHUB_WORKSPACE/ghostty-install/lib/libghostty-vt.a"
+          test -s "$LIB"
+          file "$LIB"
+          "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar" t "$LIB" | awk 'NR <= 20 { print }'
+          {
+            echo "## Ghostty Android ARMv7 probe"
+            echo "- Pinned Ghostty revision: $GHOSTTY_REVISION"
+            echo "- Target: arm-linux-androideabi (Android armeabi-v7a softfp ABI), API 29"
+            echo "- Built libghostty-vt static archive successfully."
+            echo "- This does not yet prove the Rust daemon or protocol-8 runtime."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Ghostty ARMv7 archive evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ghostty-lib-vt-android-armv7-probe
+          path: ghostty-install/lib/libghostty-vt.a
+          retention-days: 14

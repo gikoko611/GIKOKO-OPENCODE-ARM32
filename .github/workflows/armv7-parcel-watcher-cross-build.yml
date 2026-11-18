@@ -1,0 +1,108 @@
+name: Parcel recursive watcher Android ARMv7 cross-build
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/armv7-parcel-watcher-cross-build.yml"
+      - ".github/workflows/armv7-node-cli-integration.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  parcel-watcher-armv7:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      NODE_VERSION: 26.4.0
+      PARCEL_WATCHER_VERSION: 2.5.1
+      ANDROID_API_LEVEL: "29"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Android NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -perm -u+x | sort | tail -n 1)"
+          test -n "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --install "ndk;27.2.12479018"
+          NDK="$ANDROID_HOME/ndk/27.2.12479018"
+          echo "NDK=$NDK" >> "$GITHUB_ENV"
+          echo "CXX=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi29-clang++" >> "$GITHUB_ENV"
+          test -x "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi29-clang++"
+
+      - name: Fetch pinned Parcel watcher source and Node-API headers
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p native-src/node native-src/napi
+          cd native-src
+          npm pack "@parcel/watcher@$PARCEL_WATCHER_VERSION" --silent
+          tar -xzf parcel-watcher-*.tgz
+          mv package parcel-watcher
+          npm pack "node-addon-api@7.1.1" --silent
+          tar -xzf node-addon-api-*.tgz -C napi
+          curl -fsSL "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-headers.tar.gz" -o node-headers.tar.gz
+          mkdir node-headers
+          tar -xzf node-headers.tar.gz -C node-headers --strip-components=1
+          test -s parcel-watcher/src/linux/InotifyBackend.cc
+          test -s parcel-watcher/src/binding.cc
+          test -s node-headers/include/node/node_api.h
+          test -s napi/package/napi.h
+
+      - name: Cross-compile Parcel inotify backend for Android ARMv7
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC="$GITHUB_WORKSPACE/native-src/parcel-watcher"
+          NODE="$GITHUB_WORKSPACE/native-src/node-headers/include/node"
+          NAPI="$GITHUB_WORKSPACE/native-src/napi/package"
+          OUT="$GITHUB_WORKSPACE/parcel-watcher-android-armv7"
+          mkdir -p "$OUT"
+          "$CXX" \
+            --target=armv7a-linux-androideabi29 \
+            --sysroot="$NDK/toolchains/llvm/prebuilt/linux-x86_64/sysroot" \
+            -std=c++17 -O2 -fPIC -shared -fexceptions \
+            -DNAPI_VERSION=8 \
+            -DNODE_GYP_MODULE_NAME=watcher -D_GNU_SOURCE \
+            -DWATCHMAN -DINOTIFY -DBRUTE_FORCE \
+            -I"$NODE" -I"$NAPI" -I"$SRC/src" \
+            "$SRC/src/binding.cc" \
+            "$SRC/src/Watcher.cc" \
+            "$SRC/src/Backend.cc" \
+            "$SRC/src/DirTree.cc" \
+            "$SRC/src/Glob.cc" \
+            "$SRC/src/Debounce.cc" \
+            "$SRC/src/watchman/BSER.cc" \
+            "$SRC/src/watchman/WatchmanBackend.cc" \
+            "$SRC/src/shared/BruteForceBackend.cc" \
+            "$SRC/src/linux/InotifyBackend.cc" \
+            "$SRC/src/unix/legacy.cc" \
+            -Wl,-soname,watcher.node -o "$OUT/watcher.node"
+          readelf -h "$OUT/watcher.node" | grep -E 'Class:.*ELF32'
+          readelf -h "$OUT/watcher.node" | grep -E 'Machine:.*ARM'
+          readelf -d "$OUT/watcher.node" | tee "$OUT/dynamic.txt"
+          if grep -q "libc++_shared.so" "$OUT/dynamic.txt"; then
+            cp "$NDK/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/arm-linux-androideabi/libc++_shared.so" "$OUT/"
+          fi
+          ! grep -E 'libc\.so\.6|libstdc\+\+\.so\.6|ld-linux' "$OUT/dynamic.txt"
+          file "$OUT/watcher.node"
+          sha256sum "$OUT"/* > "$OUT/SHA256SUMS"
+          {
+            echo "## Parcel watcher Android ARMv7"
+            echo "- Source: @parcel/watcher $PARCEL_WATCHER_VERSION"
+            echo "- Runtime ABI: Node-API 8"
+            echo "- Target: Android ARMv7 / Bionic / API 29"
+            echo "- Backend: inotify + recursive directory backend"
+            echo "- ELF32 ARM cross-compile succeeded; on-device event tests remain required."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Parcel watcher ARMv7 candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: parcel-watcher-android-armv7-candidate
+          path: parcel-watcher-android-armv7/
+          retention-days: 14

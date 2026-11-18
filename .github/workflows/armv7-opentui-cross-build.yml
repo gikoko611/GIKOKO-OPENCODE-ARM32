@@ -8,9 +8,19 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/armv7-opentui-cross-build.yml"
+      - ".github/workflows/armv7-node-cli-integration.yml"
+      - "termux/armv7/pty-termux.node.ts"
+      - "termux/ci/apply-armv7-pty-adapter.sh"
+      - "termux/ci/audit-armv7-persistent-pty.sh"
+      - "termux/armv7/PERSISTENT-PTY-ARMV7-AUDIT.md"
+      - "termux/ci/prepare-build-tree.sh"
       - "termux/armv7/node-runtime-smoke.mjs"
       - "termux/armv7/node-opentui-load-smoke.mjs"
       - "termux/armv7/pty-api-smoke.c"
+      - "termux/armv7/pty-forkexec-smoke.c"
+      - "termux/armv7/termux-pty-android.c"
+      - "termux/armv7/node-pty-napi-smoke-armv7.mjs"
+      - "termux/test-pty-napi-armv7.sh"
       - "termux/armv7/node-pty-api-smoke.mjs"
       - "termux/test-node-runtime-armv7.sh"
       - "termux/test-opentui-armv7.sh"
@@ -18,9 +28,18 @@ on:
   pull_request:
     paths:
       - ".github/workflows/armv7-opentui-cross-build.yml"
+      - "termux/armv7/pty-termux.node.ts"
+      - "termux/ci/apply-armv7-pty-adapter.sh"
+      - "termux/ci/prepare-build-tree.sh"
       - "termux/armv7/pty-api-smoke.c"
+      - "termux/armv7/pty-forkexec-smoke.c"
+      - "termux/armv7/termux-pty-android.c"
+      - "termux/armv7/node-pty-napi-smoke-armv7.mjs"
+      - "termux/test-pty-napi-armv7.sh"
       - "termux/armv7/node-pty-api-smoke.mjs"
       - "termux/test-pty-api-armv7.sh"
+      - "termux/test-pty-forkexec-armv7.sh"
+      - "termux/package-armv7-native-test-bundle.sh"
 
 permissions:
   contents: read
@@ -238,34 +257,41 @@ jobs:
               p.write_text(s.replace(old, new, 1))
 
           Path("src/atomic64_android.c").write_text("""#include <stdint.h>
-          
-          /* ARMv7 does not expose lock-free 64-bit atomics to Zig's std.atomic API.
-           * Clang lowers these builtins to the Android ARMv7 atomic runtime sequence. */
-          uint64_t ot_atomic_u64_load(const uint64_t *value) {
+
+          /* Android's dynamic linker must see these C shim entry points in .dynsym:
+             Zig's exported wrappers call them from the same shared object. */
+          #define OT_EXPORT __attribute__((visibility("default"), used))
+          OT_EXPORT uint64_t ot_atomic_u64_load_impl(const uint64_t *value) {
               return __atomic_load_n(value, __ATOMIC_RELAXED);
           }
-          
-          uint64_t ot_atomic_u64_fetch_add(uint64_t *value, uint64_t amount) {
+
+          OT_EXPORT uint64_t ot_atomic_u64_fetch_add_impl(uint64_t *value, uint64_t amount) {
               return __atomic_fetch_add(value, amount, __ATOMIC_RELAXED);
           }
-          
-          int ot_atomic_u64_compare_exchange(uint64_t *value, uint64_t *expected, uint64_t desired) {
+
+          OT_EXPORT int ot_atomic_u64_compare_exchange_impl(uint64_t *value, uint64_t *expected, uint64_t desired) {
               return __atomic_compare_exchange_n(value, expected, desired, 0,
                                                  __ATOMIC_RELAXED, __ATOMIC_RELAXED);
           }
           """)
-          Path("src/atomic64.zig").write_text("""extern "c" fn ot_atomic_u64_load(value: *const u64) u64;
-          extern "c" fn ot_atomic_u64_fetch_add(value: *u64, amount: u64) u64;
-          extern "c" fn ot_atomic_u64_compare_exchange(value: *u64, expected: *u64, desired: u64) c_int;
-
-          pub fn load(value: *const u64) u64 {
-              return ot_atomic_u64_load(value);
+          Path("src/atomic64.zig").write_text("""extern "c" fn ot_atomic_u64_load_impl(value: *const u64) u64;
+          extern "c" fn ot_atomic_u64_fetch_add_impl(value: *u64, amount: u64) u64;
+          extern "c" fn ot_atomic_u64_compare_exchange_impl(value: *u64, expected: *u64, desired: u64) c_int;
+          
+          pub export fn ot_atomic_u64_load(value: *const u64) u64 {
+              return ot_atomic_u64_load_impl(value);
           }
-
-          pub fn fetchAdd(value: *u64, amount: u64) u64 {
-              return ot_atomic_u64_fetch_add(value, amount);
+          
+          pub export fn ot_atomic_u64_fetch_add(value: *u64, amount: u64) u64 {
+              return ot_atomic_u64_fetch_add_impl(value, amount);
           }
-
+          
+          pub export fn ot_atomic_u64_compare_exchange(value: *u64, expected: *u64, desired: u64) c_int {
+              return ot_atomic_u64_compare_exchange_impl(value, expected, desired);
+          }
+          
+          pub fn load(value: *const u64) u64 { return ot_atomic_u64_load(value); }
+          pub fn fetchAdd(value: *u64, amount: u64) u64 { return ot_atomic_u64_fetch_add(value, amount); }
           pub fn compareExchange(value: *u64, expected: *u64, desired: u64) bool {
               return ot_atomic_u64_compare_exchange(value, expected, desired) != 0;
           }
@@ -444,6 +470,89 @@ jobs:
           PY
           grep -n -A8 'fn tryJoinThread' src/clipboard/host.zig
           grep -n -A12 'fn joinCompletedWorker' src/clipboard/host.zig
+      - name: Replace ARMv7 64-bit atomics with a native 32-bit lock
+        working-directory: opentui/packages/native
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          zig = Path("src/atomic64.zig")
+          zig.write_text("""const std = @import("std");
+
+          // ARMv7 has native 32-bit atomics but no lock-free 64-bit atomics.
+          // Serialize the small set of OpenTUI u64 counters with one process-local
+          // 32-bit acquire/release spin lock. This is stronger than the callers'
+          // requested monotonic ordering and avoids unresolved libatomic helpers.
+          var atomic_lock: std.atomic.Value(u32) = .init(0);
+
+          fn acquire() void {
+              while (atomic_lock.cmpxchgWeak(0, 1, .acquire, .monotonic) != null) {}
+          }
+
+          fn release() void {
+              atomic_lock.store(0, .release);
+          }
+
+          pub export fn ot_atomic_u64_load_impl(value: *const u64) u64 {
+              acquire();
+              defer release();
+              return value.*;
+          }
+
+          pub export fn ot_atomic_u64_fetch_add_impl(value: *u64, amount: u64) u64 {
+              acquire();
+              defer release();
+              const previous = value.*;
+              value.* = previous +% amount;
+              return previous;
+          }
+
+          pub export fn ot_atomic_u64_compare_exchange_impl(value: *u64, expected: *u64, desired: u64) c_int {
+              acquire();
+              defer release();
+              if (value.* == expected.*) {
+                  value.* = desired;
+                  return 1;
+              }
+              expected.* = value.*;
+              return 0;
+          }
+
+          pub export fn ot_atomic_u64_load(value: *const u64) u64 {
+              return ot_atomic_u64_load_impl(value);
+          }
+
+          pub export fn ot_atomic_u64_fetch_add(value: *u64, amount: u64) u64 {
+              return ot_atomic_u64_fetch_add_impl(value, amount);
+          }
+
+          pub export fn ot_atomic_u64_compare_exchange(value: *u64, expected: *u64, desired: u64) c_int {
+              return ot_atomic_u64_compare_exchange_impl(value, expected, desired);
+          }
+
+          pub fn load(value: *const u64) u64 { return ot_atomic_u64_load(value); }
+          pub fn fetchAdd(value: *u64, amount: u64) u64 { return ot_atomic_u64_fetch_add(value, amount); }
+          pub fn compareExchange(value: *u64, expected: *u64, desired: u64) bool {
+              return ot_atomic_u64_compare_exchange(value, expected, desired) != 0;
+          }
+          """)
+
+          build = Path("build.zig")
+          source = build.read_text()
+          c_shim = """    if (target.result.os.tag == .linux and target.result.abi == .android and target.result.cpu.arch == .arm) {
+                  module.addCSourceFile(.{ .file = b.path("src/atomic64_android.c"), .flags = &.{"-std=c11"} });
+              }
+          """
+          if source.count(c_shim) != 1:
+              raise SystemExit(f"build.zig: expected one ARMv7 C atomic source block, found {source.count(c_shim)}")
+          build.write_text(source.replace(c_shim, "", 1))
+          print("Installed Zig-exported ARMv7-safe u64 atomic shim; removed the C atomic dependency.")
+          PY
+          grep -n -A12 'pub export fn ot_atomic_u64_load_impl' src/atomic64.zig
+          ! grep -n 'atomic64_android.c' build.zig
+
       - name: Cross-compile with Android Bionic sysroot
         working-directory: opentui/packages/native
         shell: bash
@@ -492,6 +601,18 @@ jobs:
           fi
           nm -D --defined-only "$LIB" | awk '$3 ~ /^ot/ { print }' > "$GITHUB_WORKSPACE/opentui-exported-ot-symbols.txt"
           test -s "$GITHUB_WORKSPACE/opentui-exported-ot-symbols.txt"
+          for symbol in ot_atomic_u64_load ot_atomic_u64_fetch_add ot_atomic_u64_compare_exchange; do
+            grep -Eq "[[:space:]]$symbol$" "$GITHUB_WORKSPACE/opentui-exported-ot-symbols.txt" || {
+              echo "ERROR: ARMv7 atomic shim symbol is not exported: $symbol" >&2
+              exit 1
+            }
+          done
+          for symbol in ot_atomic_u64_load_impl ot_atomic_u64_fetch_add_impl ot_atomic_u64_compare_exchange_impl; do
+            grep -Eq "[[:space:]]$symbol$" "$GITHUB_WORKSPACE/opentui-exported-ot-symbols.txt" || {
+              echo "ERROR: ARMv7 atomic C implementation is missing from .dynsym: $symbol" >&2
+              exit 1
+            }
+          done
           grep -Eq "[[:space:]]ot_context_abi_version$" "$GITHUB_WORKSPACE/opentui-exported-ot-symbols.txt" || {
             echo "ERROR: OpenTUI ABI version export is missing" >&2
             exit 1
@@ -540,33 +661,126 @@ jobs:
             echo "- Device-side execution is required; this compile does not prove full node-pty semantics."
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Build Android ARMv7 forkpty child lifecycle probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi29-clang"
+          test -x "$CC"
+          "$CC" -O2 -Wall -Wextra -Werror -mfloat-abi=softfp -mfpu=vfpv3-d16 \
+            "$GITHUB_WORKSPACE/termux/armv7/pty-forkexec-smoke.c" \
+            -o "$GITHUB_WORKSPACE/pty-forkexec-smoke-android-armv7"
+          file "$GITHUB_WORKSPACE/pty-forkexec-smoke-android-armv7"
+          readelf -h "$GITHUB_WORKSPACE/pty-forkexec-smoke-android-armv7" | tee "$GITHUB_WORKSPACE/pty-forkexec-elf-header.txt"
+          readelf -d "$GITHUB_WORKSPACE/pty-forkexec-smoke-android-armv7" | tee "$GITHUB_WORKSPACE/pty-forkexec-dynamic-section.txt"
+          grep -q 'Class:.*ELF32' "$GITHUB_WORKSPACE/pty-forkexec-elf-header.txt"
+          grep -Eq 'Machine:.*ARM' "$GITHUB_WORKSPACE/pty-forkexec-elf-header.txt"
+          grep -Eq 'Version5 EABI' "$GITHUB_WORKSPACE/pty-forkexec-elf-header.txt"
+          grep -Eq 'soft-float ABI' "$GITHUB_WORKSPACE/pty-forkexec-elf-header.txt"
+          if grep -Eqi 'libc\.so\.6|ld-linux|libstdc\+\+\.so' "$GITHUB_WORKSPACE/pty-forkexec-dynamic-section.txt"; then
+            echo "ERROR: non-Android runtime dependency found in forkpty probe" >&2
+            exit 1
+          fi
+          {
+            echo "## Android ARMv7 forkpty child lifecycle probe"
+            echo "- Cross-compiled forkpty/exec/waitpid PTY test as ELF32 ARM EABI5."
+            echo "- Device test checks controlling terminal, child output, terminal dimensions, and exit status."
+            echo "- Cross-compilation is not a substitute for executing this probe on the Redmi 9A."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build Android ARMv7 Node-API PTY addon
+        shell: bash
+        run: |
+          set -euo pipefail
+          NODE_VERSION=26.4.0
+          HEADERS="$RUNNER_TEMP/node-v${NODE_VERSION}-headers"
+          mkdir -p "$HEADERS"
+          curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-headers.tar.gz" | tar -xz --strip-components=1 -C "$HEADERS"
+          test -s "$HEADERS/include/node/node_api.h" || {
+            echo "Node headers archive did not extract the expected include/node layout" >&2
+            find "$HEADERS" -maxdepth 4 -name node_api.h -print >&2
+            exit 1
+          }
+          test -s "$HEADERS/include/node/node_api.h"
+          CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi29-clang"
+          test -x "$CC"
+          "$CC" -std=c11 -shared -fPIC -O2 -Wall -Wextra -Werror \
+            -mfloat-abi=softfp -mfpu=vfpv3-d16 -DNAPI_VERSION=8 \
+            -DNODE_GYP_MODULE_NAME=termux_pty_android \
+            -I"$HEADERS/include/node" \
+            "$GITHUB_WORKSPACE/termux/armv7/termux-pty-android.c" \
+            -Wl,-soname,termux-pty-android-armv7.node \
+            -o "$GITHUB_WORKSPACE/termux-pty-android-armv7.node"
+          file "$GITHUB_WORKSPACE/termux-pty-android-armv7.node"
+          readelf -h "$GITHUB_WORKSPACE/termux-pty-android-armv7.node" | tee "$GITHUB_WORKSPACE/termux-pty-napi-elf-header.txt"
+          readelf -d "$GITHUB_WORKSPACE/termux-pty-android-armv7.node" | tee "$GITHUB_WORKSPACE/termux-pty-napi-dynamic-section.txt"
+          readelf -Ws "$GITHUB_WORKSPACE/termux-pty-android-armv7.node" | grep 'napi_register_module_v1'
+          grep -q 'Class:.*ELF32' "$GITHUB_WORKSPACE/termux-pty-napi-elf-header.txt"
+          grep -Eq 'Machine:.*ARM' "$GITHUB_WORKSPACE/termux-pty-napi-elf-header.txt"
+          grep -Eq 'Version5 EABI' "$GITHUB_WORKSPACE/termux-pty-napi-elf-header.txt"
+          grep -Eq 'soft-float ABI' "$GITHUB_WORKSPACE/termux-pty-napi-elf-header.txt"
+          if grep -Eqi 'libc\.so\.6|ld-linux|libstdc\+\+\.so' "$GITHUB_WORKSPACE/termux-pty-napi-dynamic-section.txt"; then
+            echo "ERROR: non-Android runtime dependency found in Node-API PTY addon" >&2
+            exit 1
+          fi
+          {
+            echo "## Android ARMv7 Node-API PTY addon"
+            echo "- Built against Node v${NODE_VERSION} N-API v8 headers and Android NDK API 29."
+            echo "- Exports spawn/forkpty, resize, signal, waitpid and descriptor-close methods."
+            echo "- Device smoke test validates addon loading, child input/output, resize and exit status."
+            echo "- This is a native PTY adapter probe, not yet the complete upstream node-pty/persistent PTY integration."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Set up Bun for adapter source validation
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+
+      - name: Verify upstream Node PTY adapter integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch v2.3.0 https://github.com/anomalyco/opencode.git "$RUNNER_TEMP/opencode-pty-check"
+          bash "$GITHUB_WORKSPACE/termux/ci/apply-armv7-pty-adapter.sh" "$RUNNER_TEMP/opencode-pty-check"
+          grep -q 'process.platform === "android" && process.arch === "arm"' "$RUNNER_TEMP/opencode-pty-check/packages/core/src/pty/pty.node.ts"
+          grep -q 'native.spawn(file, args' "$RUNNER_TEMP/opencode-pty-check/packages/core/src/pty/pty.termux.node.ts"
+          bun build "$RUNNER_TEMP/opencode-pty-check/packages/core/src/pty/pty.node.ts" --target=node --external @lydell/node-pty --outdir "$RUNNER_TEMP/pty-adapter-build"
+          test -s "$RUNNER_TEMP/pty-adapter-build/pty.node.js"
+          echo "Verified adapter applies and bundles against pinned OpenCode v2.3.0 source."
+          echo "- Android ARMv7 Node PTY adapter is wired to the upstream Node PTY entrypoint." >> "$GITHUB_STEP_SUMMARY"
+          echo "- Native addon device execution and persistent daemon integration remain separate validation tasks." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Audit upstream persistent PTY ARMv7 blockers
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash "$GITHUB_WORKSPACE/termux/ci/audit-armv7-persistent-pty.sh" "$RUNNER_TEMP/opencode-pty-check"
+          {
+            echo "## Persistent PTY ARMv7 status"
+            echo "- Protocol-8 Rust daemon is audited separately from the Node forkpty adapter."
+            echo "- Pinned upstream still requires 32-bit Ghostty ABI bindings, Android Rust target support, and an Android ARMv7 binary package."
+            echo "- The standalone forkpty addon is not treated as a replacement for persistent sessions, handoff, replay, snapshots, or pipe processes."
+            echo "- See termux/armv7/PERSISTENT-PTY-ARMV7-AUDIT.md for the required implementation sequence."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Assemble one-download ARMv7 native test bundle
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash "$GITHUB_WORKSPACE/termux/package-armv7-native-test-bundle.sh" "$GITHUB_WORKSPACE/dist/armv7-native-test-bundle"
+          test -s "$GITHUB_WORKSPACE/dist/armv7-native-test-bundle/GIKOKO-OPENCODE-ARM32-NATIVE-TEST-BUNDLE.zip"
+          sha256sum "$GITHUB_WORKSPACE/dist/armv7-native-test-bundle/GIKOKO-OPENCODE-ARM32-NATIVE-TEST-BUNDLE.zip" | tee "$GITHUB_WORKSPACE/dist/armv7-native-test-bundle/SHA256SUMS.txt"
+          echo "- A single ZIP now contains the native experiments, device test scripts, and ELF evidence." >> "$GITHUB_STEP_SUMMARY"
+          echo "- This is a native test bundle, not the final OpenCode CLI installer." >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload native build evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: opentui-android-armv7-experiment
+          name: GIKOKO-OPENCODE-ARM32-NATIVE-TEST-BUNDLE
           path: |
-            libopentui-android-armv7.so
-            opentui-elf-header.txt
-            opentui-dynamic-section.txt
-            opentui-dynamic-symbols.txt
-            opentui-exported-ot-symbols.txt
-            libnode-ffi-smoke.so
-            node-ffi-smoke.mjs
-            test-node-ffi-armv7.sh
-            node-runtime-smoke.mjs
-            node-opentui-load-smoke.mjs
-            test-node-runtime-armv7.sh
-            test-opentui-armv7.sh
-            node-ffi-smoke-elf.txt
-            node-ffi-smoke-dynamic.txt
-            opentui-vendor-sha256.txt
-            android-libc.txt
-            libc++_shared-android-armv7.so
-            libpty-api-smoke-android-armv7.so
-            pty-api-elf-header.txt
-            pty-api-dynamic-section.txt
-            node-pty-api-smoke.mjs
-            test-pty-api-armv7.sh
+            dist/armv7-native-test-bundle/GIKOKO-OPENCODE-ARM32-NATIVE-TEST-BUNDLE.zip
+            dist/armv7-native-test-bundle/SHA256SUMS.txt
           if-no-files-found: ignore
           retention-days: 14
