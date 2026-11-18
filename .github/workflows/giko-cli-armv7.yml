@@ -21,13 +21,22 @@ jobs:
         run: |
           chmod +x giko-cli/install.sh
           node --check giko-cli/src/index.mjs
-          test -f giko-cli/package.json
+          node --input-type=module -e "import fs from 'node:fs'; const p=JSON.parse(fs.readFileSync('giko-cli/package.json')); if(p.version!=='0.2.0') process.exit(1);"
+          test -f giko-cli/src/index.mjs
+          test -f giko-cli/install.sh
+      - name: CLI smoke test
+        run: |
+          export HOME="$RUNNER_TEMP/gcode-home"
+          mkdir -p "$HOME"
+          node giko-cli/src/index.mjs --version
+          node giko-cli/src/index.mjs config
+          node giko-cli/src/index.mjs help
       - name: Package
         run: |
           mkdir -p dist/gcode-koko-cli-armv7
           cp -a giko-cli/. dist/gcode-koko-cli-armv7/
           chmod +x dist/gcode-koko-cli-armv7/install.sh
-          printf '%s\n' 'G.I KO KO Code CLI ARMv7 / Termux bundle' > dist/gcode-koko-cli-armv7/BUILD.txt
+          printf '%s\n' 'G.I KO KO Code CLI 0.2.0 / ARMv7 / Termux' > dist/gcode-koko-cli-armv7/BUILD.txt
           tar -czf gcode-koko-cli-armv7.tar.gz -C dist gcode-koko-cli-armv7
           sha256sum gcode-koko-cli-armv7.tar.gz > gcode-koko-cli-armv7.sha256
       - uses: actions/upload-artifact@v4
