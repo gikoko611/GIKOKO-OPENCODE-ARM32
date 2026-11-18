@@ -20,7 +20,7 @@ gcode
 - Persistent configuration and conversation session snapshots
 - Project Skills discovery from `.gcode/skills/<name>/SKILL.md`
 - Built-in task profiles: coder, reviewer, tester, planner
-- Interactive `/settings` feature toggles and provider/model/API-key configuration
+- Interactive `/settings` feature toggles, live provider model picker, free-model filter, provider/API-key configuration
 - `@path` file context, `!command` shell shortcut
 - Session controls: `/status`, `/context`, `/compact`, `/resume`, `/clear`
 
@@ -37,7 +37,7 @@ gcode
 | `/agent tester <task>` | Testing task profile |
 | `/agent planner <task>` | Planning task profile |
 | `/skills` | List project Skills |
-| `/model <id>` | Change model |
+| `/model` / `/models` | Open live provider model picker (free-only filter, refresh, manual ID) |\n| `/model <id>` | Set model directly |
 | `/doctor` | Environment/provider check |
 | `/status` | Current session and enabled features |
 | `/resume <session-id>` | Resume a saved session |
