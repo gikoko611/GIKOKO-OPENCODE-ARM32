@@ -8,10 +8,10 @@ import {randomUUID} from "node:crypto";
 import {execFile} from "node:child_process";
 import {promisify} from "node:util";
 
-const exec=promisify(execFile), VERSION="0.1.1", ROOT=process.cwd();
-const CFG=path.join(os.homedir(),".config","giko-koko","config.json");
-const DEFAULT_BASE=process.env.GIKO_BASE_URL||"https://opencode.ai/inference/openai/v1";
-const DEFAULT_MODEL=process.env.GIKO_MODEL||"opencode/glm-5.3-flash-free";
+const exec=promisify(execFile), VERSION="0.1.2", ROOT=process.cwd();
+const CFG=path.join(os.homedir(),".config","gcode-koko","config.json");
+const DEFAULT_BASE=process.env.GCODE_BASE_URL||"https://opencode.ai/inference/openai/v1";
+const DEFAULT_MODEL=process.env.GCODE_MODEL||"opencode/glm-5.3-flash-free";
 const C={gold:"\x1b[38;5;220m",green:"\x1b[38;5;114m",red:"\x1b[38;5;203m",dim:"\x1b[2m",reset:"\x1b[0m"};
 const ok=s=>console.log(C.green+"✓ "+s+C.reset), fail=s=>console.log(C.red+"✗ "+s+C.reset), warn=s=>console.log(C.gold+"! "+s+C.reset);
 
@@ -21,7 +21,7 @@ async function save(c){await fs.writeFile(CFG,JSON.stringify(c,null,2)+"\n")}
 const sid=()=> "ses_"+randomUUID().replaceAll("-","").slice(0,26);
 
 async function catalog(){
-  const r=await fetch("https://models.dev/api.json",{headers:{accept:"application/json","user-agent":"giko-koko-cli/"+VERSION}});
+  const r=await fetch("https://models.dev/api.json",{headers:{accept:"application/json","user-agent":"gcode-koko-cli/"+VERSION}});
   if(!r.ok)throw new Error("models.dev HTTP "+r.status);
   return await r.json();
 }
@@ -37,7 +37,7 @@ async function listModels(){
 }
 async function request(prompt,history,c,session){
   const model=c.model.startsWith("opencode/")?c.model.slice(9):c.model;
-  const h={"content-type":"application/json",accept:"application/json","user-agent":"giko-koko-cli/"+VERSION,"x-opencode-client":"giko-koko-cli","x-opencode-session":session};
+  const h={"content-type":"application/json",accept:"application/json","user-agent":"gcode-koko-cli/"+VERSION,"x-opencode-client":"gcode-koko-cli","x-opencode-session":session};
   if(c.apiKey)h.authorization="Bearer "+c.apiKey;
   const r=await fetch(c.baseURL.replace(/\/$/,"")+"/chat/completions",{method:"POST",headers:h,body:JSON.stringify({model,messages:[{role:"system",content:"You are G.I KO KO Code, a concise coding agent. Explain actions briefly."},...history,{role:"user",content:prompt}],stream:false})});
   const t=await r.text(); if(!r.ok){let m=t;try{const j=JSON.parse(t);m=j.error?.message||j.message||t}catch{}throw new Error("HTTP "+r.status+": "+m)}
@@ -58,12 +58,12 @@ async function interactive(){
   }rl.close();
 }
 async function main(){await ensure();const a=process.argv.slice(2),cmd=a[0];
-  if(!cmd)return interactive(); if(cmd==="--version"||cmd==="version")return console.log("giko-koko "+VERSION);
+  if(!cmd)return interactive(); if(cmd==="--version"||cmd==="version")return console.log("gcode-koko "+VERSION);
   if(cmd==="models")return listModels(); if(cmd==="doctor")return doctor();
-  if(cmd==="run"){const p=a.slice(1).join(" ");if(!p)throw Error("usage: giko run <prompt>");const c=await cfg();return console.log(await request(p,[],c,sid()))}
+  if(cmd==="run"){const p=a.slice(1).join(" ");if(!p)throw Error("usage: gcode run <prompt>");const c=await cfg();return console.log(await request(p,[],c,sid()))}
   if(cmd==="config"){const c=await cfg();c.apiKey=c.apiKey?"***":null;return console.log(JSON.stringify(c,null,2))}
   if(cmd==="set"){const k=a[1],v=a.slice(2).join(" "),c=await cfg();if(!["baseURL","model","apiKey"].includes(k))throw Error("supported: baseURL, model, apiKey");c[k]=v;await save(c);return ok(k+" updated")}
-  if(cmd==="help")return console.log("giko | giko run <prompt> | giko models | giko doctor | giko config | giko set model <id>\nInteractive: /models /model <id> /doctor /clear /exit, @file, !shell");
+  if(cmd==="help")return console.log("gcode | gcode run <prompt> | gcode models | gcode doctor | gcode config | gcode set model <id>\nInteractive: /models /model <id> /doctor /clear /exit, @file, !shell");
   throw Error("unknown command: "+cmd);
 }
 main().catch(e=>{fail(e.message);process.exitCode=1});
