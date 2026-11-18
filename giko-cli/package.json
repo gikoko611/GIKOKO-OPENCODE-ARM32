@@ -1,0 +1,9 @@
+{
+  "name":"giko-koko-cli",
+  "version":"0.1.0",
+  "private":true,
+  "type":"module",
+  "bin":{"giko":"./src/index.mjs"},
+  "engines":{"node":">=20"},
+  "license":"MIT"
+}
