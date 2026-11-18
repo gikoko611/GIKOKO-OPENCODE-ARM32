@@ -5,6 +5,10 @@ on:
     branches: ["armv7/**"]
     paths:
       - ".github/workflows/armv7-node-cli-integration.yml"
+      - ".github/workflows/armv7-opentui-cross-build.yml"
+      - ".github/workflows/armv7-parcel-watcher-cross-build.yml"
+      - ".github/workflows/armv7-ghostty-android-probe.yml"
+      - ".github/workflows/armv7-persistent-pty-cross-build.yml"
       - "termux/ci/build-armv7-node-cli.py"
       - "termux/armv7/**"
   workflow_dispatch:
@@ -54,6 +58,9 @@ jobs:
           test -s dist-node/opencode.mjs
           node --experimental-ffi --use-system-ca --disable-warning=ExperimentalWarning dist-node/opencode.mjs --version
           node --experimental-ffi --use-system-ca --disable-warning=ExperimentalWarning dist-node/opencode.mjs --help >/dev/null
+          for command in mcp plugin auth models; do
+            node --experimental-ffi --use-system-ca --disable-warning=ExperimentalWarning dist-node/opencode.mjs "$command" --help >/dev/null
+          done
           mkdir -p ../../dist/armv7-node-cli/assets
           cp dist-node/opencode.mjs ../../dist/armv7-node-cli/opencode.mjs
           cp -a dist-node/assets/. ../../dist/armv7-node-cli/assets/
@@ -131,6 +138,9 @@ jobs:
           export OPENCODE_PTY_BIN="$ROOT/native/opencode-pty"
           export OPENCODE_PHOTON_WASM_PATH="$ROOT/assets/@silvia-odwyer/photon-node/photon_rs_bg.wasm"
           export LD_LIBRARY_PATH="$ROOT/native${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          export SSL_CERT_FILE="${SSL_CERT_FILE:-$PREFIX/etc/tls/cert.pem}"
+          export SSL_CERT_DIR="${SSL_CERT_DIR:-$PREFIX/etc/tls/certs}"
+          mkdir -p "$SSL_CERT_DIR"
           exec "$NODE_BIN" --experimental-ffi --use-system-ca --disable-warning=ExperimentalWarning "$ROOT/opencode.mjs" "$@"
           EOF
           chmod 0755 "$ROOT/opencode"
@@ -140,6 +150,7 @@ jobs:
           HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
           PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
           NODE_BIN="${NODE_BIN:-$PREFIX/bin/node}"
+          mkdir -p "$PREFIX/etc/tls/certs"
           test -x "$NODE_BIN" || { echo "Termux Node.js 26.4.0+ is required." >&2; exit 1; }
           "$NODE_BIN" -e 'const [a,b]=process.versions.node.split(".").map(Number); if(a<26||(a===26&&b<4)) process.exit(1)' || {
             echo "Node.js 26.4.0 or later is required." >&2; exit 1;
@@ -159,6 +170,7 @@ jobs:
           set -euo pipefail
           PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
           NODE_BIN="${NODE_BIN:-$PREFIX/bin/node}"
+          mkdir -p "$PREFIX/etc/tls/certs"
           ROOT="$PREFIX/lib/opencode-armv7"
           export OPENTUI_LIB_PATH="$ROOT/native/libopentui-android-armv7.so"
           export OPENCODE_TERMUX_PTY_PATH="$ROOT/native/termux-pty-android-armv7.node"
@@ -166,6 +178,9 @@ jobs:
           export OPENCODE_PTY_BIN="$ROOT/native/opencode-pty"
           export OPENCODE_PHOTON_WASM_PATH="$ROOT/assets/@silvia-odwyer/photon-node/photon_rs_bg.wasm"
           export LD_LIBRARY_PATH="$ROOT/native${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          export SSL_CERT_FILE="${SSL_CERT_FILE:-$PREFIX/etc/tls/cert.pem}"
+          export SSL_CERT_DIR="${SSL_CERT_DIR:-$PREFIX/etc/tls/certs}"
+          mkdir -p "$SSL_CERT_DIR"
           exec "$NODE_BIN" --experimental-ffi --use-system-ca --disable-warning=ExperimentalWarning "$ROOT/opencode.mjs" "$@"
           LAUNCH
           chmod 0755 "$PREFIX/bin/opencode"
