@@ -1,27 +1,24 @@
-# G.I KO KO CLI
+# G.I KO KO Code CLI
 
 Lightweight phone-first coding agent for Termux/ARMv7.
 
 Features:
-- interactive agent shell
+- interactive coding-agent shell
 - one-shot run
-- live OpenCode free-model catalog
+- OpenCode model catalog lookup
 - session IDs and project working directory
-- @file context
-- !shell
+- @file context and !shell
 - /models, /model, /doctor, /clear, /exit
-- local configuration
-- OpenAI-compatible endpoint
-- GitHub Actions ARMv7/Termux bundle
+- local configuration and OpenAI-compatible providers
 
-No OpenCode account is stored by this CLI. OpenCode documents free models as available without an account. The hosted free tier is enforced server-side and may reject non-OpenCode clients; this project does not bypass or spoof that enforcement.
-
-Termux:
+Termux install:
   bash giko-cli/install.sh
-  giko --version
-  giko models
-  giko
+  gcode --version
+  gcode models
+  gcode
 
-Config: ~/.config/giko-koko/config.json
+Config: ~/.config/gcode-koko/config.json
+
+Note: the model catalog is separate from inference access. OpenCode may restrict its hosted free inference to its official client. This CLI does not bypass that server-side policy.
 
 Build target: ARMv7 / 32-bit Android. Node.js is supplied by Termux.
