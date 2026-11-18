@@ -5,6 +5,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/armv7-persistent-pty-cross-build.yml"
+      - ".github/workflows/armv7-node-cli-integration.yml"
       - "termux/ci/patch-process-daemon-armv7.sh"
       - "termux/armv7/PERSISTENT-PTY-ARMV7-AUDIT.md"
 
