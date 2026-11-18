@@ -43,7 +43,7 @@ async function request(prompt,history,c,session){
   const headers={"content-type":"application/json","accept":"application/json","user-agent":"giko-koko-cli/"+VERSION,"x-opencode-client":"giko-koko-cli","x-opencode-session":session};
   if(c.apiKey)headers.authorization="Bearer "+c.apiKey;
   const body={model:model,messages:[{role:"system",content:"You are G.I KO KO Code, a concise coding agent. Explain actions briefly."},...history,{role:"user",content:prompt}],stream:false};
-  const r=await fetch(c.baseURL.replace(/\\/$/,"")+"/chat/completions",{method:"POST",headers,body:JSON.stringify(body)});
+  const r=await fetch(c.baseURL.replace(/\/$/,"")+"/chat/completions",{method:"POST",headers,body:JSON.stringify(body)});
   const text=await r.text();
   if(!r.ok){
     let msg=text;
@@ -55,7 +55,7 @@ async function request(prompt,history,c,session){
 }
 
 async function shell(command){
-  const p=command.trim().split(/\\s+/);
+  const p=command.trim().split(/\s+/);
   if(!p[0])return "";
   const r=await exec(p[0],p.slice(1),{cwd:ROOT,maxBuffer:4*1024*1024});
   return (r.stdout||"")+(r.stderr||"");
@@ -79,7 +79,7 @@ async function interactive(){
   console.log(dim+"Project: "+ROOT+"  Model: "+c.model+reset);
   const rl=readline.createInterface({input,output});
   while(true){
-    const q=(await rl.question("\\n> ")).trim();
+    const q=(await rl.question("\n> ")).trim();
     if(!q)continue;
     if(q==="/exit"||q==="/quit")break;
     if(q==="/models"){try{await listModels()}catch(e){fail(e.message)};continue}
@@ -89,7 +89,7 @@ async function interactive(){
     if(q.startsWith("!")){try{console.log(await shell(q.slice(1)))}catch(e){fail(e.message)};continue}
     if(q.startsWith("@")){
       const f=path.resolve(ROOT,q.slice(1).trim());
-      try{const t=await fs.readFile(f,"utf8");history.push({role:"user",content:"File "+f+" content:\\n"+t});ok("attached "+f)}catch(e){fail(e.message)}
+      try{const t=await fs.readFile(f,"utf8");history.push({role:"user",content:"File "+f+" content:\n"+t});ok("attached "+f)}catch(e){fail(e.message)}
       continue;
     }
     try{
@@ -125,7 +125,7 @@ async function main(){
     if(!["baseURL","model","apiKey"].includes(k))throw new Error("supported: baseURL, model, apiKey");
     c[k]=v;await save(c);ok(k+" updated");return;
   }
-  if(cmd==="help"){console.log("giko\\ngiko run <prompt>\\ngiko models\\ngiko doctor\\ngiko config\\ngiko set baseURL <url>\\ngiko set model <provider/model>\\nInteractive: /models /model <id> /doctor /clear /exit, @file, !shell");return}
+  if(cmd==="help"){console.log("giko\ngiko run <prompt>\ngiko models\ngiko doctor\ngiko config\ngiko set baseURL <url>\ngiko set model <provider/model>\nInteractive: /models /model <id> /doctor /clear /exit, @file, !shell");return}
   throw new Error("unknown command: "+cmd);
 }
 main().catch(e=>{fail(e.message);process.exitCode=1});
