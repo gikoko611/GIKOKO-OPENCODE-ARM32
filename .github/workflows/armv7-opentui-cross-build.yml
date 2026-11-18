@@ -8,6 +8,7 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/armv7-opentui-cross-build.yml"
+      - ".github/workflows/armv7-node-cli-integration.yml"
       - "termux/armv7/pty-termux.node.ts"
       - "termux/ci/apply-armv7-pty-adapter.sh"
       - "termux/ci/audit-armv7-persistent-pty.sh"
