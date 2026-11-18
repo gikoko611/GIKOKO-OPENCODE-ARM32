@@ -5,6 +5,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/armv7-ghostty-android-probe.yml"
+      - ".github/workflows/armv7-node-cli-integration.yml"
       - "termux/armv7/PERSISTENT-PTY-ARMV7-AUDIT.md"
 
 permissions:
