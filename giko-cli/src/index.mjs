@@ -95,6 +95,43 @@ async function agent(prompt,history,c,rl,session){
   }
   throw Error("Agent reached the maximum tool-call rounds ("+(c.maxToolRounds||12)+"). Ask it to continue.")
 }
+async function fetchModels(c){
+  const base=c.baseURL.replace(/\/$/,"");
+  const headers={accept:"application/json","user-agent":"gcode-koko-cli/"+VERSION};
+  if(c.apiKey)headers.authorization="Bearer "+c.apiKey;
+  const r=await fetch(base+"/models",{headers,signal:AbortSignal.timeout(20000)});
+  const body=await r.text();
+  if(!r.ok)throw Error("Models API HTTP "+r.status+": "+body.slice(0,500));
+  const data=JSON.parse(body);
+  const rows=Array.isArray(data)?data:(data.data||data.models||[]);
+  return rows.map(x=>({id:String(x.id||x.name||""),free:x.pricing?Number(x.pricing.prompt||0)===0&&Number(x.pricing.completion||0)===0:(x.cost?Number(x.cost.input||0)===0&&Number(x.cost.output||0)===0:/free/i.test(String(x.id||"")))})).filter(x=>x.id);
+}
+async function chooseModel(rl,c){
+  try{
+    console.log(paint("Fetching models from "+c.baseURL+" ...",C.dim));
+    const models=await fetchModels(c);
+    if(!models.length){warn("Provider returned no model entries.");const id=await ask(rl,"Model ID: ");if(id){c.model=id;await save(c);ok("Model set to "+id)}return}
+    console.log("\n"+paint("AVAILABLE MODELS",C.gold));
+    models.forEach((m,i)=>console.log((i+1)+". "+m.id+(m.free?"  "+paint("[FREE]",C.green):"")));
+    console.log("f. Show free models only   m. Enter model ID manually   0. Cancel");
+    let list=models;
+    while(true){
+      const v=await ask(rl,paint("Choose model: ",C.gold));
+      if(v==="0"||!v)return;
+      if(v==="f"){list=models.filter(x=>x.free);if(!list.length){warn("Provider did not identify free models.");continue}list.forEach((m,i)=>console.log((i+1)+". "+m.id+"  "+paint("[FREE]",C.green)));continue}
+      if(v==="m"){const id=await ask(rl,"Model ID: ");if(id){c.model=id;await save(c);ok("Model set to "+id)}return}
+      if(/^\d+$/.test(v)&&Number(v)>=1&&Number(v)<=list.length){c.model=list[Number(v)-1].id;await save(c);ok("Model set to "+c.model);return}
+      warn("Choose a listed number, f, m or 0");
+    }
+  }catch(e){warn("Could not load provider model list: "+e.message);const id=await ask(rl,"Enter model ID manually (blank to cancel): ");if(id){c.model=id;await save(c);ok("Model set to "+id)}}
+}
+async function showModels(rl,c){
+  try{const models=await fetchModels(c);if(!models.length){warn("No models returned");return}
+    console.log(paint("AVAILABLE MODELS",C.gold));
+    models.forEach((m,i)=>console.log((i+1)+". "+m.id+(m.free?"  "+paint("[FREE]",C.green):"")));
+    console.log("\nCurrent: "+c.model+"\nUse /model <number> to select, or /model <id> to set manually.");
+  }catch(e){fail("Model list unavailable: "+e.message);console.log("Current model: "+c.model)}
+}
 async function doctor(){const c=await cfg();console.log("G.I KO KO CODE "+VERSION);console.log("Node: "+process.version+" / "+process.arch);console.log("Project: "+ROOT);console.log("Provider: "+c.baseURL);console.log("Model: "+c.model);console.log("Mode: "+c.mode);try{await fs.access(path.join(ROOT,".git"));ok("Git repository detected")}catch{warn("Not a Git repository")}try{const r=await fetch(c.baseURL,{method:"HEAD",signal:AbortSignal.timeout(10000)});ok("Provider host reachable (HTTP "+r.status+")")}catch(e){warn("Provider check: "+e.message)}}
 const featureLabels={fileRead:"Read project files",fileWrite:"Write/edit project files",shell:"Run shell commands",git:"Git tools",skills:"Load project Skills",plan:"Plan mode",memory:"Persistent session history",subagents:"Subagent profiles",mcp:"MCP configuration",plugins:"Plugin configuration",lsp:"LSP configuration",hooks:"Hooks"};
 async function settings(rl,c){
@@ -107,7 +144,7 @@ async function settings(rl,c){
     const v=await ask(rl,paint("Select: ",C.gold));if(v==="0"||!v)break;
     if(/^[1-9]\d*$/.test(v)&&Number(v)<=keys.length){const k=keys[Number(v)-1];c.features[k]=!c.features[k];await save(c);ok(featureLabels[k]+" "+(c.features[k]?"enabled":"disabled"));continue}
     if(v==="p"){c.baseURL=await ask(rl,"Base URL: ");await save(c);continue}
-    if(v==="m"){c.model=await ask(rl,"Model ID: ");await save(c);continue}
+    if(v==="m"){await chooseModel(rl,c);continue}
     if(v==="a"){const k=await ask(rl,"API key (blank keeps current): ");if(k)c.apiKey=k;await save(c);ok("API key saved");continue}
     if(v==="x"){console.log("1. ask (confirm writes/shell)\n2. auto (allow tools)\n3. plan (no tools)");const n=await ask(rl,"Mode: ");c.mode=({"1":"ask","2":"auto","3":"plan"})[n]||c.mode;await save(c);continue}
     if(v==="t"){c.theme=await ask(rl,"Theme name (gold/green/blue): ")||"gold";await save(c);continue}
@@ -130,8 +167,8 @@ async function interactive(){
     if(q==="/exit"||q==="/quit")break;
     if(q==="/help"){console.log("/settings /model <id> /models /doctor /plan <task> /auto /ask /skills /agents /mcp /plugins /hooks /status /context /compact /clear /resume <session-id> /exit\nUse @path to attach a file. Use !command to run a shell command.");continue}
     if(q==="/settings"){await settings(rl,c);continue}
-    if(q==="/models"){console.log("Use /model <provider-model-id> to switch. The configured provider's model IDs are accepted.");continue}
-    if(q.startsWith("/model ")){c.model=q.slice(7).trim();await save(c);ok("Model changed to "+c.model);continue}
+    if(q==="/models"){await showModels(rl,c);continue}
+    if(q.startsWith("/model ")){const value=q.slice(7).trim();if(/^\d+$/.test(value)){try{const models=await fetchModels(c);const item=models[Number(value)-1];if(!item){warn("Model number not found. Use /models");continue}c.model=item.id}catch(e){fail(e.message);continue}}else c.model=value;await save(c);ok("Model changed to "+c.model);continue}
     if(q==="/doctor"){await doctor();continue}
     if(q==="/plan"){c.mode="plan";await save(c);ok("Plan mode enabled (tools disabled)");continue}
     if(q.startsWith("/plan ")){const old=c.mode;c.mode="plan";try{console.log(paint("✦ PLAN",C.gold)+"\n"+await agent(q.slice(6),history,c,rl,session))}catch(e){fail(e.message)}c.mode=old;continue}
